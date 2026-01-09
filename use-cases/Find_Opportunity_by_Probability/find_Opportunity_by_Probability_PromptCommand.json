@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "minimumProbability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "ONLY the probability percentage value. Extract from 'probability: [value]' or 'probability over [value]%' or 'probability above [value]' patterns. This must be a number between 0 and 100. Example: if input is 'Find opportunities with probability over 70%', extract 70 only. If input is 'probability: 80', extract 80 only. Default: 70 if not specified."
+    },
+    "includeClosed": {
+      "type": "boolean",
+      "description": "ONLY the boolean value indicating whether to include closed opportunities. Extract from 'include closed' or 'including closed' or 'with closed opportunities' patterns. If user says 'only open' or 'exclude closed', set to false. If user says 'include closed' or 'all opportunities', set to true. Default: false (only open opportunities)."
+    }
+  },
+  "required": []
+}

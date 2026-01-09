@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "required": [],
+  "properties": {
+    "accountName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Account name to find cases for. Use this OR accountId."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account ID (prefer accountName)."
+    },
+    "includeClosed": {
+      "type": "boolean",
+      "description": "Include closed cases. Default: false (open only)."
+    }
+  }
+}

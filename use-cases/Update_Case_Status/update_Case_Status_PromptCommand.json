@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "required": ["caseId", "status"],
+  "properties": {
+    "caseId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "ONLY the Case ID (Salesforce 15 or 18 character ID). Extract from 'Case ID: [value]' or 'Case: [value]' or 'ID: [value]' patterns. Example: if input is 'Update case 500xx000000ABCD to closed', extract '500xx000000ABCD' only. Case IDs start with '500'. This field is REQUIRED."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "New",
+        "Working",
+        "In Progress",
+        "Escalated",
+        "On Hold",
+        "Closed",
+        "Closed - Resolved",
+        "Closed - Not Resolved"
+      ],
+      "description": "ONLY the new status value. Extract from 'Status: [value]' or 'to [value]' or 'mark as [value]' patterns. Example: if input is 'Update case status to In Progress', extract 'In Progress' only. Valid values: 'New', 'Working', 'In Progress', 'Escalated', 'On Hold', 'Closed', 'Closed - Resolved', 'Closed - Not Resolved'. This field is REQUIRED."
+    },
+    "resolutionNotes": {
+      "type": "string",
+      "description": "ONLY the resolution notes or comments. Extract from 'Resolution: [value]' or 'Notes: [value]' or 'Comment: [value]' patterns. Example: if input is 'Close case with resolution: Fixed network configuration issue', extract 'Fixed network configuration issue' only. This field is OPTIONAL and typically used when closing a case."
+    }
+  }
+}

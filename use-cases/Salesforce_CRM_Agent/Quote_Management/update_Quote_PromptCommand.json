@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "quoteNumber": {
+      "type": "string",
+      "maxLength": 30,
+      "description": "Quote number (e.g., 'Q-00001234'). Use this, quoteId, OR name."
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Quote name (for lookup or to update)."
+    },
+    "quoteId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Quote ID (prefer quoteNumber or name)."
+    },
+    "opportunityName": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Change opportunity by name."
+    },
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Change opportunity by ID (prefer opportunityName)."
+    },
+    "expirationDate": {
+      "type": "string",
+      "description": "Update expiration date (YYYY-MM-DD)."
+    },
+    "status": {
+      "type": "string",
+      "description": "Update status: 'Draft', 'In Review', 'Approved', 'Rejected', 'Presented', 'Accepted', 'Denied'."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 32000,
+      "description": "Update description."
+    },
+    "discount": {
+      "type": "number",
+      "description": "Update discount amount."
+    },
+    "tax": {
+      "type": "number",
+      "description": "Update tax amount."
+    },
+    "shippingHandling": {
+      "type": "number",
+      "description": "Update shipping cost."
+    }
+  },
+  "additionalProperties": false
+}

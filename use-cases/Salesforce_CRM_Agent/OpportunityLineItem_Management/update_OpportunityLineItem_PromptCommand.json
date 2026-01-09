@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["lineItemId"],
+  "properties": {
+    "lineItemId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Line item ID to update (REQUIRED, starts with '00k')."
+    },
+    "quantity": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Update quantity."
+    },
+    "unitPrice": {
+      "type": "number",
+      "description": "Update price per unit. Use this OR totalPrice (not both)."
+    },
+    "totalPrice": {
+      "type": "number",
+      "description": "Update total price. Use this OR unitPrice (not both)."
+    },
+    "discount": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Update discount percentage (0-100%)."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Update description."
+    },
+    "serviceDate": {
+      "type": "string",
+      "description": "Update service date (YYYY-MM-DD)."
+    }
+  },
+  "additionalProperties": false
+}

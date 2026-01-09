@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "required": [],
+  "properties": {
+    "accountName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Account name to find opportunities for. Use this OR accountId."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account ID (prefer accountName)."
+    },
+    "includeClosedWon": {
+      "type": "boolean",
+      "description": "Include won deals. Default: true."
+    },
+    "includeClosedLost": {
+      "type": "boolean",
+      "description": "Include lost deals. Default: false."
+    }
+  }
+}

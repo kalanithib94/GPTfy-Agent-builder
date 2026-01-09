@@ -1,0 +1,1 @@
+Salesforce CRM Assistant with dual capabilities: (1) CRM Operations - Search accounts, create and update cases, contacts, opportunities, quotes, and products with 14 operations. (2) GPTfy Knowledge - Answer questions about GPTfy setup, configuration, features, licenses, and best practices using the knowledge base.

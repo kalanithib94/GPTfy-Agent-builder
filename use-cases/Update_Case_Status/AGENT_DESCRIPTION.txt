@@ -1,0 +1,1 @@
+Create a case management agent that can update case status to various states including In Progress, Escalated, On Hold, and Closed, with the ability to add resolution notes when closing cases. The agent should be efficient, detail-oriented, and ensure proper case status tracking throughout the support lifecycle.

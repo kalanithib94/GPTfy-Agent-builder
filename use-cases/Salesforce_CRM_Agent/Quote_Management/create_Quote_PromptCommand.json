@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Quote name (REQUIRED). E.g., 'Q1 2026 Proposal'."
+    },
+    "opportunityName": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Opportunity name to link quote to (REQUIRED - use this OR opportunityId)."
+    },
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Opportunity ID (prefer opportunityName)."
+    },
+    "expirationDate": {
+      "type": "string",
+      "description": "Expiration date (YYYY-MM-DD)."
+    },
+    "status": {
+      "type": "string",
+      "description": "Quote status: 'Draft', 'In Review', 'Approved', 'Rejected', 'Presented', 'Accepted', 'Denied'."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 32000,
+      "description": "Quote details or terms."
+    },
+    "discount": {
+      "type": "number",
+      "description": "Discount amount. E.g., 5000 for $5,000 off."
+    },
+    "tax": {
+      "type": "number",
+      "description": "Tax amount. E.g., 1500 for $1,500 tax."
+    },
+    "shippingHandling": {
+      "type": "number",
+      "description": "Shipping cost. E.g., 250 for $250 shipping."
+    }
+  },
+  "additionalProperties": false
+}

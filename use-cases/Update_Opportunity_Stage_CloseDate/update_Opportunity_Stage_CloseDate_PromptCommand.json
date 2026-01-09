@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "required": ["opportunityId", "stageName", "closeDate"],
+  "properties": {
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "ONLY the Opportunity ID (Salesforce 15 or 18 character ID). Extract from 'Opportunity ID: [value]' or 'Opp: [value]' or 'ID: [value]' patterns. Example: if input is 'Update opportunity 006xx000000ABCD to Closed Won', extract '006xx000000ABCD' only. Opportunity IDs start with '006'. This field is REQUIRED."
+    },
+    "stageName": {
+      "type": "string",
+      "enum": [
+        "Prospecting",
+        "Qualification",
+        "Needs Analysis",
+        "Value Proposition",
+        "Id. Decision Makers",
+        "Perception Analysis",
+        "Proposal/Price Quote",
+        "Negotiation/Review",
+        "Closed Won",
+        "Closed Lost"
+      ],
+      "description": "ONLY the new stage name value. Extract from 'Stage: [value]' or 'to [value]' or 'move to [value]' patterns. Example: if input is 'Update opportunity stage to Closed Won', extract 'Closed Won' only. Valid values: 'Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Id. Decision Makers', 'Perception Analysis', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'. This field is REQUIRED."
+    },
+    "closeDate": {
+      "type": "string",
+      "format": "date",
+      "description": "ONLY the close date in YYYY-MM-DD format. Extract from 'Close Date: [value]' or 'closing on [value]' or 'push to [value]' patterns. Example: if input is 'Push close date to March 31, 2026', extract '2026-03-31' only. Must be a valid date in YYYY-MM-DD format. This field is REQUIRED."
+    }
+  }
+}

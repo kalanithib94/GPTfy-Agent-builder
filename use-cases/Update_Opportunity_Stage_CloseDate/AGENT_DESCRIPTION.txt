@@ -1,0 +1,1 @@
+Manage opportunity pipeline by updating stage names and close dates for active opportunities. Move deals through the sales process from Prospecting to Closed Won/Lost, and adjust close dates as deal timelines change. The agent ensures accurate sales forecasting and pipeline management by keeping opportunity stages and close dates current.

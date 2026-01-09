@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["quantity"],
+  "properties": {
+    "opportunityName": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Opportunity name to add product to (REQUIRED - use this OR opportunityId)."
+    },
+    "productName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Product name to add (REQUIRED - use this, productId, OR pricebookEntryId)."
+    },
+    "quantity": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Product quantity (REQUIRED). E.g., 5, 100, 1.5."
+    },
+    "unitPrice": {
+      "type": "number",
+      "description": "Price per unit. E.g., 1000 for $1,000 each. Use this OR totalPrice (not both)."
+    },
+    "totalPrice": {
+      "type": "number",
+      "description": "Total price for all units. E.g., 5000 for $5,000 total. Use this OR unitPrice (not both)."
+    },
+    "discount": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Discount percentage (0-100%). E.g., 10 for 10% off."
+    },
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Opportunity ID (prefer opportunityName)."
+    },
+    "productId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Product ID (prefer productName)."
+    },
+    "pricebookEntryId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Pricebook entry ID (prefer productName)."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Additional details about this line item."
+    },
+    "serviceDate": {
+      "type": "string",
+      "description": "Service/delivery date (YYYY-MM-DD)."
+    }
+  },
+  "additionalProperties": false
+}

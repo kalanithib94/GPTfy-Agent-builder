@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "required": ["accountName"],
+  "properties": {
+    "accountName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Account name to search (REQUIRED). Supports fuzzy matching for typos."
+    },
+    "limit": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Max results to return. Default: 10."
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sf org display:*)",
+      "Bash(sfdx force:org:display:*)",
+      "Bash(sf org list:*)",
+      "Bash(sf data query:*)",
+      "Bash(\"C:\\Program Files\\sfdx\\bin\\sf.cmd\" data query --query \"SELECT Id, Name, ccai_qa__Prompt_Command__c FROM ccai_qa__AI_Prompt__c WHERE Id IN (''a07QH00000oa2Y4YAI'', ''a07QH00000oZzNyYAK'')\" --target-org sgptQa --json)",
+      "Bash(where:*)",
+      "Bash(cmd /c:*)",
+      "Bash(findstr:*)",
+      "Bash(./query_prompts.bat)",
+      "Bash(./describe_prompt.bat)",
+      "Bash(./get_fields.bat)",
+      "Bash(./query_values.bat)",
+      "Bash(del query_prompts.bat describe_prompt.bat get_fields.bat query_values.bat prompt_metadata.json)",
+      "Bash(./get_apex_classes.bat)",
+      "Bash(./query_all_prompts.bat)",
+      "Bash(./get_handler_classes.bat)",
+      "Bash(./get_framework_classes.bat)",
+      "Bash(sf apex run:*)",
+      "Bash(./check_prompt_record.bat)",
+      "Bash(powershell:*)",
+      "Bash(move:*)",
+      "Bash(dir:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(ls:*)",
+      "Bash(\"C:\\\\Program Files\\\\sfdx\\\\bin\\\\sf.cmd\" data query --query \"SELECT Id, Name, ccai_qa__Apex_Class_Name__c, ccai_qa__Prompt_Command__c FROM ccai_qa__AI_Prompt__c WHERE Name LIKE ''%Case%'' OR Name LIKE ''%Contact%'' OR Name LIKE ''%Opportunity%'' ORDER BY Name\" --target-org sgptQa --json)",
+      "Bash(\"C:\\\\Program Files\\\\sfdx\\\\bin\\\\sf.cmd\" apex run --file \"c:\\\\CC\\\\Project_SFDC\\\\Agent - SP ebergy\\\\test_contact_full_params.apex\" --target-org sgptQa)"
+    ]
+  }
+}

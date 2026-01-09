@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["name", "closeDate", "stageName", "accountId"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Opportunity name (REQUIRED). E.g., 'Q1 2026 Solar Deal', 'Enterprise Software License'."
+    },
+    "closeDate": {
+      "type": "string",
+      "description": "Expected close date (REQUIRED). Format: YYYY-MM-DD. E.g., '2026-03-31'."
+    },
+    "stageName": {
+      "type": "string",
+      "description": "Sales stage (REQUIRED): 'Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account ID from find_Account_by_Name (primaryAccountId). Use this if available."
+    },
+    "amount": {
+      "type": "number",
+      "description": "Deal value in USD. E.g., 100000 for $100K deal."
+    },
+    "probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Win probability percentage (0-100). E.g., 75 for 75% likely to close."
+    },
+    "type": {
+      "type": "string",
+      "description": "Opportunity type: 'New Business', 'Existing Business', 'Renewal', 'Upgrade'."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 32000,
+      "description": "Detailed description of the deal, requirements, or notes."
+    },
+    "nextStep": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Next action to move deal forward. E.g., 'Schedule demo', 'Send proposal', 'Follow up call'."
+    }
+  },
+  "additionalProperties": false
+}

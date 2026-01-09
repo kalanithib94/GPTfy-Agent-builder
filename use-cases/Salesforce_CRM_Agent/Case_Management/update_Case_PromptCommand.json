@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "caseId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Case ID to update (use this if you have the ID)."
+    },
+    "caseNumber": {
+      "type": "string",
+      "maxLength": 30,
+      "description": "Case number to update (e.g., '00001234')."
+    },
+    "subject": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Case subject for lookup (supports partial match). To UPDATE the subject to a new value, use 'newSubject' parameter instead."
+    },
+    "newSubject": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "New subject value when updating the case subject. Use 'subject' to find the case, then this parameter to change it."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account ID to filter case lookup by account."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 32000,
+      "description": "Update the case description."
+    },
+    "status": {
+      "type": "string",
+      "description": "Update status: 'New', 'Working', 'Escalated', 'Closed'."
+    },
+    "priority": {
+      "type": "string",
+      "description": "Update priority: 'Low', 'Medium', 'High', 'Critical'."
+    },
+    "origin": {
+      "type": "string",
+      "description": "Update origin: 'Phone', 'Email', 'Web', 'Chat'."
+    },
+    "type": {
+      "type": "string",
+      "description": "Update type: 'Question', 'Problem', 'Feature Request'."
+    },
+    "contactId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Change the linked contact by Contact ID."
+    }
+  },
+  "additionalProperties": false
+}

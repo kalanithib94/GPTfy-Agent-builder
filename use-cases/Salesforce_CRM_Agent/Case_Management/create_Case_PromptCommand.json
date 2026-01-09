@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["subject", "accountId"],
+  "properties": {
+    "subject": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Brief summary of the issue (e.g., 'Password change request', 'Unable to login')."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 32000,
+      "description": "Detailed description of the issue."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account ID from find_Account_by_Name (primaryAccountId). Use this if available."
+    },
+    "contactId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Contact ID to link the case to a specific contact."
+    },
+    "status": {
+      "type": "string",
+      "description": "Case status: 'New', 'Working', 'Escalated', 'Closed'. Default is 'New'."
+    },
+    "priority": {
+      "type": "string",
+      "description": "Priority: 'Low', 'Medium', 'High', 'Critical'. Default is 'Medium'."
+    },
+    "origin": {
+      "type": "string",
+      "description": "How case was created: 'Phone', 'Email', 'Web', 'Chat'."
+    },
+    "type": {
+      "type": "string",
+      "description": "Case type: 'Question', 'Problem', 'Feature Request'."
+    }
+  },
+  "additionalProperties": false
+}

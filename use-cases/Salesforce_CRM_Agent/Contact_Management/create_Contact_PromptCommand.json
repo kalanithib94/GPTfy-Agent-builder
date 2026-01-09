@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["lastName", "accountId"],
+  "properties": {
+    "lastName": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Last name (REQUIRED by Salesforce)."
+    },
+    "firstName": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "First name."
+    },
+    "email": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Email address."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account ID from find_Account_by_Name (primaryAccountId). Use this if available."
+    },
+    "phone": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "Business phone number."
+    },
+    "mobilePhone": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "Mobile phone number."
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Job title (e.g., 'VP of Sales', 'IT Manager')."
+    },
+    "department": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Department (e.g., 'Sales', 'IT', 'Marketing')."
+    }
+  },
+  "additionalProperties": false
+}

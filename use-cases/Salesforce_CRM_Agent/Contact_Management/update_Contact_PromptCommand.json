@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "contactId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Contact ID to update (use this if you have the ID)."
+    },
+    "email": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Email to find contact (for lookup) or to update the email."
+    },
+    "firstName": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "First name for lookup (supports partial match) or to update."
+    },
+    "lastName": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Last name for lookup (supports partial match) or to update."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account ID to filter contact lookup by account, or to move contact to different account."
+    },
+    "phone": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "Update business phone number."
+    },
+    "mobilePhone": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "Update mobile phone number."
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Update job title."
+    },
+    "department": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Update department."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 32000,
+      "description": "Update contact notes/description."
+    }
+  },
+  "additionalProperties": false
+}

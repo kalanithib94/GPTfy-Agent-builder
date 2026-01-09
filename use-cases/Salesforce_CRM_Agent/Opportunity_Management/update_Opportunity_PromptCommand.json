@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Opportunity ID to update (use this if you have the ID)."
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Opportunity name for lookup (supports partial match) or to update the name."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account ID to filter opportunity lookup by account, or to move opportunity to different account."
+    },
+    "closeDate": {
+      "type": "string",
+      "description": "Update close date (YYYY-MM-DD). E.g., '2026-06-30'."
+    },
+    "stageName": {
+      "type": "string",
+      "description": "Update stage: 'Prospecting', 'Qualification', 'Needs Analysis', 'Value Proposition', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'."
+    },
+    "amount": {
+      "type": "number",
+      "description": "Update deal value."
+    },
+    "probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Update win probability (0-100)."
+    },
+    "type": {
+      "type": "string",
+      "description": "Update type: 'New Business', 'Existing Business', 'Renewal', 'Upgrade'."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 32000,
+      "description": "Update opportunity description or notes."
+    },
+    "nextStep": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Update next action. E.g., 'Send revised proposal', 'Schedule executive meeting'."
+    }
+  },
+  "additionalProperties": false
+}
