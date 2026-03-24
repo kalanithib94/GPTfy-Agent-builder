@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { resolveSalesforceClientConfig } from "@/lib/sf-client-config";
 import { getSalesforceAuthBase } from "@/lib/sf-endpoints";
 import { createPkceChallengeS256, createPkceVerifier } from "@/lib/sf-pkce";
 
@@ -12,12 +13,13 @@ function redirectConnectError(request: Request, message: string) {
 }
 
 export async function GET(request: Request) {
-  const clientId = process.env.SALESFORCE_CLIENT_ID?.trim();
-  const redirectUri = process.env.SALESFORCE_CALLBACK_URL?.trim();
+  const cfg = await resolveSalesforceClientConfig();
+  const clientId = cfg.clientId;
+  const redirectUri = cfg.callbackUrl;
   if (!clientId || !redirectUri) {
     return redirectConnectError(
       request,
-      "OAuth is not configured: set SALESFORCE_CLIENT_ID and SALESFORCE_CALLBACK_URL on the server (Vercel Environment Variables or .env.local), then redeploy."
+      "OAuth is not configured: set SALESFORCE_CLIENT_ID and SALESFORCE_CALLBACK_URL on the server, or save per-org client config in /connect."
     );
   }
 

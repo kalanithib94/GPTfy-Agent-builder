@@ -35,6 +35,10 @@ export function ConnectActions({ ready }: Props) {
           {loading === "sandbox" ? "Redirecting…" : "Sandbox"}
         </button>
       </div>
+      <p className="text-xs text-neutral-500">
+        Production uses <code className="text-neutral-400">login.salesforce.com</code>. Sandbox uses{" "}
+        <code className="text-neutral-400">test.salesforce.com</code>.
+      </p>
       {loading ? (
         <p className="text-sm text-neutral-500">Opening Salesforce — keep this tab open until you return.</p>
       ) : null}

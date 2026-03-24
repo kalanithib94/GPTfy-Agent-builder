@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { resolveSalesforceClientConfig } from "@/lib/sf-client-config";
 import { getSalesforceAuthBase } from "@/lib/sf-endpoints";
 import { saveTokenResponseToSession, type TokenResponse } from "@/lib/sf-token-session";
 
@@ -11,13 +12,14 @@ function redirectConnectError(requestUrl: string, message: string) {
 }
 
 export async function GET(request: Request) {
-  const clientId = process.env.SALESFORCE_CLIENT_ID?.trim();
-  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET?.trim();
-  const redirectUri = process.env.SALESFORCE_CALLBACK_URL?.trim();
+  const cfg = await resolveSalesforceClientConfig();
+  const clientId = cfg.clientId;
+  const clientSecret = cfg.clientSecret;
+  const redirectUri = cfg.callbackUrl;
   if (!clientId || !clientSecret || !redirectUri) {
     return redirectConnectError(
       request.url,
-      "OAuth is not configured: set SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET, and SALESFORCE_CALLBACK_URL on the server, then redeploy."
+      "OAuth is not configured: set SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET, and SALESFORCE_CALLBACK_URL on the server, or save per-org client config in /connect."
     );
   }
 

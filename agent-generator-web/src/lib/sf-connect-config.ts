@@ -1,13 +1,24 @@
+type ConnectConfigInput = {
+  clientId?: string;
+  clientSecret?: string;
+  callbackUrl?: string;
+  source?: "env" | "session";
+};
+
 /** Safe booleans for UI — never expose secret values. */
-export function getSalesforceConnectConfig() {
-  const clientId = process.env.SALESFORCE_CLIENT_ID?.trim();
-  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET?.trim();
-  const callbackUrl = process.env.SALESFORCE_CALLBACK_URL?.trim();
+export function getSalesforceConnectConfig(input?: ConnectConfigInput) {
+  const envClientId = process.env.SALESFORCE_CLIENT_ID?.trim();
+  const envClientSecret = process.env.SALESFORCE_CLIENT_SECRET?.trim();
+  const envCallbackUrl = process.env.SALESFORCE_CALLBACK_URL?.trim();
+  const clientId = input?.clientId?.trim() || envClientId;
+  const clientSecret = input?.clientSecret?.trim() || envClientSecret;
+  const callbackUrl = input?.callbackUrl?.trim() || envCallbackUrl;
 
   return {
     hasClientId: Boolean(clientId),
     hasClientSecret: Boolean(clientSecret),
     hasCallbackUrl: Boolean(callbackUrl),
+    source: input?.source ?? "env",
     /** True when /api/salesforce/login can start OAuth */
     readyForAuthorize: Boolean(clientId && callbackUrl),
     /** True when callback can exchange the code */

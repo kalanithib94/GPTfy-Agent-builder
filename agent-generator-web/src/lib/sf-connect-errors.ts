@@ -32,6 +32,9 @@ export function describeConnectError(raw: string | undefined): string {
   if (lower.includes("access_denied")) {
     return "Salesforce login was cancelled or access was denied. Try again and approve the app.";
   }
+  if (lower.includes("cross-org oauth flows are not supported")) {
+    return "This External Client App is org-scoped and cannot be used cross-org. Save the target org's client ID/secret/callback in Connect (session config) or use that org's own app credentials.";
+  }
 
   return decoded.length > 500 ? `${decoded.slice(0, 500)}…` : decoded;
 }

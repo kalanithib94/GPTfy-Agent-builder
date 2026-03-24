@@ -14,6 +14,10 @@ export type SfSessionData = {
   gptfyNamespace?: string;
   /** login | test for token refresh */
   sfEnv?: "production" | "sandbox";
+  /** Optional per-session External Client App override (for multi-org setups). */
+  sfClientId?: string;
+  sfClientSecret?: string;
+  sfCallbackUrl?: string;
 };
 
 export const sessionOptions: SessionOptions = {
