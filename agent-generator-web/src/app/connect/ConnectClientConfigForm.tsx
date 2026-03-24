@@ -73,9 +73,9 @@ export function ConnectClientConfigForm({ suggestedCallback, usingSessionConfig 
 
   return (
     <div className="card-muted space-y-4">
-      <h2 className="text-sm font-semibold text-neutral-200">Optional: use this org's External Client App</h2>
+      <h2 className="text-sm font-semibold text-neutral-200">Optional: use this org&apos;s External Client App</h2>
       <p className="text-xs text-neutral-500">
-        For multi-org setups, paste each org's Client ID/Secret + callback here. Stored encrypted in your session
+        For multi-org setups, paste each org&apos;s Client ID/Secret + callback here. Stored encrypted in your session
         cookie for this browser only.
       </p>
       <p className="text-xs text-neutral-400">
