@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSalesforceAuthBase } from "@/lib/sf-endpoints";
+import { parseSalesforceTokenErrorBody } from "@/lib/sf-token-error";
 import { saveTokenResponseToSession, type TokenResponse } from "@/lib/sf-token-session";
 
 export const dynamic = "force-dynamic";
@@ -67,20 +68,16 @@ export async function POST(request: Request) {
 
   const tokenText = await tokenRes.text();
   if (!tokenRes.ok) {
-    let hint = "Check username, password, and security token. Ensure the Connected App allows Username-Password OAuth.";
-    try {
-      const errJson = JSON.parse(tokenText) as { error?: string; error_description?: string };
-      if (errJson.error_description?.toLowerCase().includes("grant")) {
-        hint = "Salesforce rejected the login. Enable “Allow OAuth Username-Password Flows” on the Connected App if your org allows it.";
-      }
-    } catch {
-      /* ignore */
-    }
+    const parsed = parseSalesforceTokenErrorBody(tokenText);
+    const hint =
+      "If you use an External Client App, username-password OAuth is often not supported — use “Production” or “Sandbox” at the top of this page instead.";
     return NextResponse.json(
       {
         error: "salesforce_login_failed",
-        message: hint,
-        detail: tokenText.slice(0, 280),
+        message: parsed.userMessage,
+        hint,
+        detail: parsed.raw,
+        salesforce_error: parsed.error,
       },
       { status: 401 }
     );

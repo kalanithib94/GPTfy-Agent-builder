@@ -45,12 +45,21 @@ export async function GET(request: Request) {
   const jar = cookies();
   const expected = jar.get("sf_oauth_state")?.value;
   const envCookie = jar.get("sf_oauth_env")?.value;
+  const codeVerifier = jar.get("sf_oauth_code_verifier")?.value;
   jar.delete("sf_oauth_state");
   jar.delete("sf_oauth_env");
+  jar.delete("sf_oauth_code_verifier");
 
   if (!expected || state !== expected) {
     return NextResponse.redirect(
       new URL("/connect?error=invalid_oauth_state", url.origin)
+    );
+  }
+
+  const pkceExpected = process.env.SALESFORCE_USE_PKCE === "true";
+  if (pkceExpected && !codeVerifier) {
+    return NextResponse.redirect(
+      new URL("/connect?error=missing_pkce_verifier", url.origin)
     );
   }
 
@@ -64,6 +73,9 @@ export async function GET(request: Request) {
     redirect_uri: redirectUri,
     code,
   });
+  if (codeVerifier) {
+    body.set("code_verifier", codeVerifier);
+  }
 
   const tokenRes = await fetch(`${tokenBase}/services/oauth2/token`, {
     method: "POST",
@@ -73,9 +85,17 @@ export async function GET(request: Request) {
 
   const tokenText = await tokenRes.text();
   if (!tokenRes.ok) {
+    let detail = tokenText.slice(0, 400);
+    try {
+      const j = JSON.parse(tokenText) as { error?: string; error_description?: string };
+      if (j.error_description) detail = j.error_description;
+      else if (j.error) detail = j.error;
+    } catch {
+      /* keep raw slice */
+    }
     return NextResponse.redirect(
       new URL(
-        `/connect?error=${encodeURIComponent("token_exchange_failed: " + tokenText.slice(0, 200))}`,
+        `/connect?error=${encodeURIComponent(`token_exchange_failed: ${detail}`)}`,
         url.origin
       )
     );

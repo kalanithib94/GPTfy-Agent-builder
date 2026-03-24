@@ -19,8 +19,12 @@ export function describeConnectError(raw: string | undefined): string {
   if (decoded === "invalid_oauth_state") {
     return "OAuth state did not match (session expired or another tab). Click Production or Sandbox again and finish login within a few minutes.";
   }
+  if (decoded === "missing_pkce_verifier") {
+    return "OAuth PKCE cookie was missing (blocked cookies, expired step, or old deployment). Click Production or Sandbox again from /connect in the same browser.";
+  }
   if (lower.includes("token_exchange_failed")) {
-    return `Token exchange failed. Check SALESFORCE_CLIENT_SECRET matches the Connected App Consumer Secret, and the callback URL matches exactly. ${decoded.slice(0, 200)}`;
+    const after = decoded.includes(":") ? decoded.split(":").slice(1).join(":").trim() : decoded;
+    return `Token exchange failed — Salesforce said: ${after.slice(0, 500)}. Typical fixes: Consumer Secret and Callback URL match the External Client App; turn off “Require user credentials in the POST body” for Authorization Code if you did not send username/password on the token step; ensure Authorization Code flow is enabled.`;
   }
   if (lower.includes("oauth is not configured") || lower.includes("missing salesforce")) {
     return decoded;

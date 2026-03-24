@@ -22,10 +22,14 @@ export default function ConnectPage({ searchParams }: Props) {
   );
 
   const cfg = getSalesforceConnectConfig();
-  const missing: string[] = [];
-  if (!cfg.hasClientId) missing.push("SALESFORCE_CLIENT_ID");
-  if (!cfg.hasClientSecret) missing.push("SALESFORCE_CLIENT_SECRET");
-  if (!cfg.hasCallbackUrl) missing.push("SALESFORCE_CALLBACK_URL");
+  const missingOAuth: string[] = [];
+  if (!cfg.hasClientId) missingOAuth.push("SALESFORCE_CLIENT_ID");
+  if (!cfg.hasClientSecret) missingOAuth.push("SALESFORCE_CLIENT_SECRET");
+  if (!cfg.hasCallbackUrl) missingOAuth.push("SALESFORCE_CALLBACK_URL");
+
+  const missingPassword: string[] = [];
+  if (!cfg.hasClientId) missingPassword.push("SALESFORCE_CLIENT_ID");
+  if (!cfg.hasClientSecret) missingPassword.push("SALESFORCE_CLIENT_SECRET");
 
   const ready = cfg.readyForToken;
   const readyPassword = cfg.readyForPassword;
@@ -41,31 +45,54 @@ export default function ConnectPage({ searchParams }: Props) {
         </p>
       </div>
 
-      {/* Configuration status */}
-      <div
-        className={`card border ${
-          ready
-            ? "border-emerald-500/25 bg-emerald-950/20"
-            : "border-amber-500/25 bg-amber-950/15"
-        }`}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* Two checks: password form uses only ID+secret; browser OAuth needs callback too */}
+      <div className="card border border-[var(--border)] space-y-4">
+        <p className="text-xs font-medium uppercase tracking-wider text-neutral-500">Server env (Vercel or .env.local)</p>
+        <p className="text-xs text-neutral-500">
+          After changing variables on Vercel, run a new deployment — existing deployments do not pick up new values until you redeploy.
+        </p>
+
+        <div
+          className={`flex flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-2.5 ${
+            readyPassword ? "border-emerald-500/25 bg-emerald-950/15" : "border-amber-500/25 bg-amber-950/10"
+          }`}
+        >
           <div>
-            <p className="text-sm font-medium text-white">
-              {ready ? "Ready to connect" : "Server configuration incomplete"}
-            </p>
+            <p className="text-sm font-medium text-white">Sign in on this page (username / password)</p>
             <p className="mt-1 text-sm text-neutral-400">
-              {ready
-                ? "Environment variables are set for authorize + token exchange."
-                : `Missing: ${missing.join(", ")} — add them in Vercel (or .env.local) and redeploy.`}
+              {readyPassword
+                ? "Consumer Key and Secret are set — the form below is enabled."
+                : `Missing: ${missingPassword.join(", ")} — add in Vercel, save, redeploy.`}
             </p>
           </div>
           <span
             className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
-              ready ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-200"
+              readyPassword ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-200"
             }`}
           >
-            {ready ? "OK" : `${3 - missing.length}/3`}
+            {readyPassword ? "OK" : `${2 - missingPassword.length}/2`}
+          </span>
+        </div>
+
+        <div
+          className={`flex flex-wrap items-start justify-between gap-3 rounded-lg border px-3 py-2.5 ${
+            ready ? "border-emerald-500/25 bg-emerald-950/15" : "border-neutral-600/40 bg-black/20"
+          }`}
+        >
+          <div>
+            <p className="text-sm font-medium text-white">Production / Sandbox (browser OAuth)</p>
+            <p className="mt-1 text-sm text-neutral-400">
+              {ready
+                ? "All three vars set — browser buttons work."
+                : `Also needs: ${missingOAuth.join(", ")}.`}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
+              ready ? "bg-emerald-500/20 text-emerald-300" : "bg-neutral-600/30 text-neutral-400"
+            }`}
+          >
+            {ready ? "OK" : `${3 - missingOAuth.length}/3`}
           </span>
         </div>
       </div>

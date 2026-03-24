@@ -54,15 +54,23 @@ export function ConnectPasswordForm({ disabled }: Props) {
         ok?: boolean;
         error?: string;
         message?: string;
+        hint?: string;
         detail?: string;
       };
       if (!res.ok) {
-        const msg =
-          j.message ||
-          (typeof j.detail === "string" ? j.detail.slice(0, 200) : null) ||
-          j.error ||
-          "Login failed";
-        setErr(msg);
+        const parts: string[] = [];
+        if (typeof j.message === "string" && j.message.trim()) parts.push(j.message.trim());
+        if (typeof j.hint === "string" && j.hint.trim()) parts.push(j.hint.trim());
+        if (
+          parts.length === 0 &&
+          typeof j.detail === "string" &&
+          j.detail.trim() &&
+          !j.detail.trim().startsWith("{")
+        ) {
+          parts.push(j.detail.trim().slice(0, 400));
+        }
+        if (parts.length === 0) parts.push(j.error || "Login failed");
+        setErr(parts.join("\n\n"));
         return;
       }
       router.push("/status");
@@ -76,10 +84,16 @@ export function ConnectPasswordForm({ disabled }: Props) {
 
   return (
     <form onSubmit={onSubmit} className="space-y-5">
+      <p className="rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 text-xs text-amber-100/90 leading-relaxed">
+        <strong className="text-amber-200">External Client Apps</strong> often{" "}
+        <strong className="text-amber-200">do not support</strong> username-password OAuth. If this keeps failing, use{" "}
+        <strong className="text-amber-200">Production</strong> or <strong className="text-amber-200">Sandbox</strong>{" "}
+        above (browser login) — that is the supported path for Agent_Creator-style apps.
+      </p>
       <p className="rounded-lg border border-cyan-500/15 bg-cyan-950/20 px-3 py-2 text-xs text-neutral-400 leading-relaxed">
         Same idea as your Patient app <strong className="text-neutral-300">Settings → Salesforce</strong>: username,
-        password, and optional security token. Here we use the Connected App&apos;s OAuth password grant (no
-        credential storage on the server).
+        password, and optional security token. Classic Connected Apps can use OAuth password grant (no credential
+        storage on the server).
       </p>
 
       <div className="space-y-2">
@@ -176,7 +190,9 @@ export function ConnectPasswordForm({ disabled }: Props) {
       </div>
 
       {err ? (
-        <p className="rounded-lg border border-red-500/30 bg-red-950/30 px-3 py-2 text-sm text-red-200">{err}</p>
+        <p className="rounded-lg border border-red-500/30 bg-red-950/30 px-3 py-2 text-sm text-red-200 whitespace-pre-wrap break-words">
+          {err}
+        </p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">

@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getSalesforceAuthBase } from "@/lib/sf-endpoints";
+import { createPkceChallengeS256, createPkceVerifier } from "@/lib/sf-pkce";
 
 function redirectConnectError(request: Request, message: string) {
   const u = new URL(request.url);
@@ -24,6 +25,8 @@ export async function GET(request: Request) {
   const sandbox = searchParams.get("sandbox") === "1";
   const env = sandbox ? "sandbox" : "production";
   const state = randomBytes(24).toString("hex");
+  /** Opt-in: set SALESFORCE_USE_PKCE=true when the External Client App requires PKCE. */
+  const usePkce = process.env.SALESFORCE_USE_PKCE === "true";
 
   const jar = cookies();
   jar.set("sf_oauth_state", state, {
@@ -41,6 +44,19 @@ export async function GET(request: Request) {
     path: "/",
   });
 
+  let codeChallenge: string | null = null;
+  if (usePkce) {
+    const codeVerifier = createPkceVerifier();
+    codeChallenge = createPkceChallengeS256(codeVerifier);
+    jar.set("sf_oauth_code_verifier", codeVerifier, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
+      path: "/",
+    });
+  }
+
   const base = getSalesforceAuthBase(env);
   const params = new URLSearchParams({
     response_type: "code",
@@ -50,6 +66,10 @@ export async function GET(request: Request) {
     scope: "api refresh_token offline_access openid",
     prompt: "consent",
   });
+  if (codeChallenge) {
+    params.set("code_challenge", codeChallenge);
+    params.set("code_challenge_method", "S256");
+  }
 
   return NextResponse.redirect(`${base}/services/oauth2/authorize?${params}`);
 }
