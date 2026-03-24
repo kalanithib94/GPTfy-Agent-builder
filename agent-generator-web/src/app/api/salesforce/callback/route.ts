@@ -1,22 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getSalesforceAuthBase } from "@/lib/sf-endpoints";
-import { getSfSession } from "@/lib/session";
-
-type TokenResponse = {
-  access_token: string;
-  refresh_token?: string;
-  instance_url: string;
-  id: string;
-  token_type: string;
-};
-
-type IdentityResponse = {
-  user_id: string;
-  organization_id: string;
-  username?: string;
-  display_name?: string;
-};
+import { saveTokenResponseToSession, type TokenResponse } from "@/lib/sf-token-session";
 
 function redirectConnectError(requestUrl: string, message: string) {
   const u = new URL(requestUrl);
@@ -105,34 +90,7 @@ export async function GET(request: Request) {
     );
   }
 
-  let username: string | undefined;
-  let orgId: string | undefined;
-  let userId: string | undefined;
-  try {
-    const idRes = await fetch(tokenJson.id, {
-      headers: { Authorization: `Bearer ${tokenJson.access_token}` },
-    });
-    if (idRes.ok) {
-      const idJson = (await idRes.json()) as IdentityResponse;
-      username = idJson.username;
-      orgId = idJson.organization_id;
-      userId = idJson.user_id;
-    }
-  } catch {
-    // non-fatal
-  }
-
-  const session = await getSfSession();
-  session.accessToken = tokenJson.access_token;
-  if (tokenJson.refresh_token) session.refreshToken = tokenJson.refresh_token;
-  session.instanceUrl = tokenJson.instance_url;
-  session.idUrl = tokenJson.id;
-  session.username = username;
-  session.orgId = orgId;
-  session.userId = userId;
-  session.sfEnv = env;
-  session.gptfyNamespace = undefined;
-  await session.save();
+  await saveTokenResponseToSession(tokenJson, env);
 
   return NextResponse.redirect(new URL("/status", url.origin));
 }

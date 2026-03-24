@@ -12,6 +12,8 @@ export function getSalesforceConnectConfig() {
     readyForAuthorize: Boolean(clientId && callbackUrl),
     /** True when callback can exchange the code */
     readyForToken: Boolean(clientId && clientSecret && callbackUrl),
+    /** Username-password OAuth (needs Consumer Key + Secret only; no callback URL for the token POST) */
+    readyForPassword: Boolean(clientId && clientSecret),
   };
 }
 

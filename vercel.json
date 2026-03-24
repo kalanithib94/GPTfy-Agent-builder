@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "cd agent-generator-web && npm ci",
+  "buildCommand": "cd agent-generator-web && npm run build",
+  "regions": ["iad1"]
+}

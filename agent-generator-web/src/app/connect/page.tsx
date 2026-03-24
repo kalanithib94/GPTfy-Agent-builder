@@ -6,6 +6,7 @@ import {
   getSalesforceConnectConfig,
 } from "@/lib/sf-connect-config";
 import { ConnectActions } from "./ConnectActions";
+import { ConnectPasswordForm } from "./ConnectPasswordForm";
 import { CopyCallback } from "./CopyCallback";
 
 type Props = { searchParams: { error?: string } };
@@ -27,6 +28,7 @@ export default function ConnectPage({ searchParams }: Props) {
   if (!cfg.hasCallbackUrl) missing.push("SALESFORCE_CALLBACK_URL");
 
   const ready = cfg.readyForToken;
+  const readyPassword = cfg.readyForPassword;
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -72,14 +74,34 @@ export default function ConnectPage({ searchParams }: Props) {
         <div className="card-muted border-red-500/30 text-sm text-red-100/95 break-words">{friendlyError}</div>
       ) : null}
 
-      <div className="card space-y-4">
-        <h2 className="text-sm font-semibold text-white">Sign in</h2>
-        <ConnectActions ready={ready} />
-        {!ready ? (
-          <p className="text-xs text-neutral-500">
-            Buttons stay disabled until Client ID, Client Secret, and Callback URL are all set on the server.
+      <div className="card space-y-6">
+        <div>
+          <h2 className="text-sm font-semibold text-white">Sign in with Salesforce (browser)</h2>
+          <p className="mt-1 text-xs text-neutral-500">Opens Salesforce login — best for SSO and MFA.</p>
+          <div className="mt-4">
+            <ConnectActions ready={ready} />
+          </div>
+          {!ready ? (
+            <p className="mt-2 text-xs text-neutral-500">
+              Needs Client ID, Client Secret, and Callback URL on the server.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="border-t border-[var(--border)] pt-6">
+          <h2 className="text-sm font-semibold text-white">Or sign in on this page</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Same shape as a typical <strong className="text-neutral-400">Settings → Salesforce</strong> form (env,
+            login URL, user, password, token). Uses OAuth password grant; only Consumer Key &amp; Secret — no callback
+            URL for this path.
           </p>
-        ) : null}
+          <div className="mt-4">
+            <ConnectPasswordForm disabled={!readyPassword} />
+          </div>
+          {!readyPassword ? (
+            <p className="mt-2 text-xs text-amber-200/90">Set SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET.</p>
+          ) : null}
+        </div>
       </div>
 
       <div className="card-muted space-y-4">
