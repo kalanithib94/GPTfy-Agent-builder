@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "required": ["subject"],
+  "properties": {
+    "subject": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "REQUIRED. Short Task subject from the user (e.g. 'Call Acme about pricing'). Extract the core action, not the whole sentence if redundant."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional Task body / extra context from the user message."
+    },
+    "activityDate": {
+      "type": "string",
+      "description": "Due date. BEST: YYYY-MM-DD computed from user wording (e.g. 'tomorrow' → actual calendar tomorrow). ALSO allowed: literal words today | tomorrow | yesterday (server parses). Omit to default to today."
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["High", "Normal", "Low"],
+      "description": "High if user signals urgency; else Normal or omit."
+    },
+    "accountName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Company / Account name from the user when they mention who the task is about (e.g. 'Acme') but did NOT give a Salesforce Id. Server resolves to WhatId when exactly one Account matches. If multiple match, response asks for disambiguation — then pass whatId. Omit if whatId is set."
+    },
+    "whatId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Optional 15/18 char Salesforce Id for related record (Account 001…, Opportunity 006…, etc.) ONLY when user or prior tool output provided the Id."
+    },
+    "whoId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Optional Contact 003… or Lead 00Q… Id only if explicitly given."
+    }
+  }
+}

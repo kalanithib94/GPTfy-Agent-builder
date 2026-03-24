@@ -68,34 +68,90 @@ public with sharing class UpdateOpportunityStageDateHandler implements AIAgentic
         }
 
         // 2. Validate required parameters
-        if (!parameters.containsKey('opportunityId') ||
-            String.isBlank(String.valueOf(parameters.get('opportunityId')))) {
-            return errorResponse('opportunityId is required.');
-        }
         if (!parameters.containsKey('stageName') ||
             String.isBlank(String.valueOf(parameters.get('stageName')))) {
             return errorResponse('stageName is required.');
         }
-        if (!parameters.containsKey('closeDate') ||
-            String.isBlank(String.valueOf(parameters.get('closeDate')))) {
-            return errorResponse('closeDate is required.');
+
+        String newStageName = String.valueOf(parameters.get('stageName')).trim();
+        String closeDateStr = parameters.containsKey('closeDate') && parameters.get('closeDate') != null
+            ? String.valueOf(parameters.get('closeDate'))
+            : null;
+        boolean updateCloseDate = String.isNotBlank(closeDateStr);
+
+        // 3. Get Opportunity ID - support multiple lookup methods
+        Id oppId = null;
+
+        if (parameters.containsKey('opportunityId') && parameters.get('opportunityId') != null && String.isNotBlank(String.valueOf(parameters.get('opportunityId')))) {
+            System.debug('DEBUG: Looking up opportunity by opportunityId');
+            String opportunityIdStr = String.valueOf(parameters.get('opportunityId'));
+
+            // Validate Opportunity ID format
+            if (!isValidId(opportunityIdStr) || !opportunityIdStr.startsWith('006')) {
+                return errorResponse('Invalid Opportunity ID format. Opportunity ID must be a valid 15 or 18 character ID starting with 006.');
+            }
+
+            oppId = (Id) opportunityIdStr;
+            System.debug('DEBUG: opportunityId = ' + oppId);
+        } else if (parameters.containsKey('name') && parameters.get('name') != null && String.isNotBlank(String.valueOf(parameters.get('name')))) {
+            System.debug('DEBUG: Looking up opportunity by partial name match');
+            String partialName = String.valueOf(parameters.get('name'));
+            String searchPattern = '%' + partialName + '%';
+            System.debug('DEBUG: searchPattern = ' + searchPattern);
+
+            // If accountId provided, search within that account (accountId provides context)
+            if (parameters.containsKey('accountId') && parameters.get('accountId') != null && String.isNotBlank(String.valueOf(parameters.get('accountId')))) {
+                System.debug('DEBUG: Filtering by accountId for context');
+                String accountIdStr = String.valueOf(parameters.get('accountId'));
+                System.debug('DEBUG: accountId = ' + accountIdStr);
+                List<Opportunity> opps = [
+                    SELECT Id
+                    FROM Opportunity
+                    WHERE Name LIKE :searchPattern AND AccountId = :accountIdStr
+                    ORDER BY CreatedDate DESC
+                    LIMIT 1
+                ];
+                if (!opps.isEmpty()) {
+                    oppId = opps[0].Id;
+                    System.debug('DEBUG: Found opportunity under account: ' + oppId);
+                } else {
+                    return errorResponse('Opportunity not found with name containing "' + partialName + '" under the specified account');
+                }
+            } else {
+                // Search by name only
+                System.debug('DEBUG: Searching by name without account filter');
+                List<Opportunity> opps = [
+                    SELECT Id
+                    FROM Opportunity
+                    WHERE Name LIKE :searchPattern
+                    ORDER BY CreatedDate DESC
+                    LIMIT 1
+                ];
+                if (!opps.isEmpty()) {
+                    oppId = opps[0].Id;
+                    System.debug('DEBUG: Found opportunity: ' + oppId);
+                } else {
+                    return errorResponse('Opportunity not found with name containing: ' + partialName);
+                }
+            }
+        } else {
+            return errorResponse('Either opportunityId or name is required to find the opportunity');
         }
 
-        String opportunityId = String.valueOf(parameters.get('opportunityId'));
-        String newStageName = String.valueOf(parameters.get('stageName'));
-        String closeDateStr = String.valueOf(parameters.get('closeDate'));
-
-        // 3. Validate Opportunity ID format
-        if (!isValidId(opportunityId) || !opportunityId.startsWith('006')) {
-            return errorResponse('Invalid Opportunity ID format. Opportunity ID must be a valid 15 or 18 character ID starting with 006.');
+        // Validate that we found an opportunityId
+        if (oppId == null) {
+            return errorResponse('Failed to determine opportunityId for update');
         }
+        System.debug('DEBUG: Final opportunityId for update: ' + oppId);
 
-        // 4. Validate and parse Close Date
-        Date newCloseDate;
-        try {
-            newCloseDate = Date.valueOf(closeDateStr);
-        } catch (Exception e) {
-            return errorResponse('Invalid closeDate format. Use YYYY-MM-DD format (e.g., 2026-03-31).');
+        // 4. Validate and parse Close Date (optional - when omitted, keep existing)
+        Date newCloseDate = null;
+        if (updateCloseDate) {
+            try {
+                newCloseDate = Date.valueOf(closeDateStr);
+            } catch (Exception e) {
+                return errorResponse('Invalid closeDate format. Use YYYY-MM-DD format (e.g., 2026-03-31).');
+            }
         }
 
         // 5. Query the opportunity
@@ -103,12 +159,12 @@ public with sharing class UpdateOpportunityStageDateHandler implements AIAgentic
             SELECT Id, Name, StageName, CloseDate, Amount, Probability,
                    Account.Name, Owner.Name, IsClosed, IsWon
             FROM Opportunity
-            WHERE Id = :opportunityId
+            WHERE Id = :oppId
             LIMIT 1
         ];
 
         if (opps.isEmpty()) {
-            return errorResponse('Opportunity not found with ID: ' + opportunityId);
+            return errorResponse('Opportunity not found with ID: ' + oppId);
         }
 
         Opportunity oppRecord = opps[0];
@@ -119,13 +175,22 @@ public with sharing class UpdateOpportunityStageDateHandler implements AIAgentic
             return errorResponse('Cannot update a closed opportunity. Opportunity "' + oppRecord.Name + '" is already closed with stage: ' + oppRecord.StageName);
         }
 
-        // 7. Perform update
+        // 7. Validate stage against org picklist
+        String resolvedStage = resolveStageName(newStageName);
+        if (resolvedStage == null) {
+            List<String> validStages = getValidStageNames();
+            return errorResponse('Invalid stage "' + newStageName + '". Valid stages: ' + String.join(validStages, ', '));
+        }
+
+        // 8. Perform update
         try {
             String oldStageName = oppRecord.StageName;
             Date oldCloseDate = oppRecord.CloseDate;
 
-            oppRecord.StageName = newStageName;
-            oppRecord.CloseDate = newCloseDate;
+            oppRecord.StageName = resolvedStage;
+            if (updateCloseDate && newCloseDate != null) {
+                oppRecord.CloseDate = newCloseDate;
+            }
 
             System.debug('Updating opportunity: ' + JSON.serializePretty(oppRecord));
 
@@ -146,11 +211,16 @@ public with sharing class UpdateOpportunityStageDateHandler implements AIAgentic
             // 9. Build redirect URL
             String redirectUrl = URL.getOrgDomainUrl().toExternalForm() + '/' + updatedOpp.Id;
 
-            // 10. Return success response
+            // 10. Build message
+            String successMsg = updateCloseDate && newCloseDate != null
+                ? 'Successfully updated opportunity "' + updatedOpp.Name + '" from stage "' + oldStageName + '" to "' + resolvedStage + '" and moved close date from ' + oldCloseDate + ' to ' + updatedOpp.CloseDate
+                : 'Successfully updated opportunity "' + updatedOpp.Name + '" from stage "' + oldStageName + '" to "' + resolvedStage + '"';
+
+            // 11. Return success response
             return JSON.serialize(new Map<String, Object>{
                 'success' => true,
                 'status' => 'success',
-                'message' => 'Successfully updated opportunity "' + updatedOpp.Name + '" from stage "' + oldStageName + '" to "' + newStageName + '" and moved close date from ' + oldCloseDate + ' to ' + newCloseDate,
+                'message' => successMsg,
                 'data' => new Map<String, Object>{
                     'opportunityId' => updatedOpp.Id,
                     'name' => updatedOpp.Name,
@@ -187,7 +257,27 @@ public with sharing class UpdateOpportunityStageDateHandler implements AIAgentic
         }
     }
 
-    // SECTION 5: Helper Method
+    // SECTION 5: Helper Methods
+    private String resolveStageName(String userInput) {
+        if (String.isBlank(userInput)) return null;
+        for (String valid : getValidStageNames()) {
+            if (valid.equalsIgnoreCase(userInput)) return valid;
+        }
+        return null;
+    }
+
+    private List<String> getValidStageNames() {
+        List<String> values = new List<String>();
+        try {
+            for (Schema.PicklistEntry pe : Opportunity.StageName.getDescribe().getPicklistValues()) {
+                if (pe.isActive()) values.add(pe.getValue());
+            }
+        } catch (Exception e) {
+            System.debug('Could not describe StageName: ' + e.getMessage());
+        }
+        return values;
+    }
+
     private Boolean isValidId(String recordId) {
         if (String.isBlank(recordId)) {
             return false;

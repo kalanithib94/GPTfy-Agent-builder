@@ -1,0 +1,135 @@
+Ext_ID,Action_Ext_ID,ccai_qa__AI_Intent_Action__c,ccai_qa__Field_API_Name__c,ccai_qa__Type__c,_Hardcoded_Value_Or_AI_Instruction
+CRM-INT-002-ACT-001-DTL-001,CRM-INT-002-ACT-001,,Description,AI Extracted,"Flag this account as at-risk. Use the reason the user mentioned (churn risk, unhappy with service, considering competitors) and prepend: ⚠ AT-RISK: to the existing description."
+CRM-INT-002-ACT-002-DTL-001,CRM-INT-002-ACT-002,,Subject,Hardcoded,AT-RISK Account: Schedule retention call immediately
+CRM-INT-002-ACT-002-DTL-002,CRM-INT-002-ACT-002,,Description,AI Extracted,Summarize the at-risk situation from the conversation — why is the account at risk and what the user said.
+CRM-INT-002-ACT-002-DTL-003,CRM-INT-002-ACT-002,,Priority,Hardcoded,High
+CRM-INT-002-ACT-002-DTL-004,CRM-INT-002-ACT-002,,Status,Hardcoded,Not Started
+CRM-INT-003-ACT-001-DTL-001,CRM-INT-003-ACT-001,,Subject,AI Extracted,Analyze the conversation and create a concise accurate case subject describing the urgent issue raised by the user.
+CRM-INT-003-ACT-001-DTL-002,CRM-INT-003-ACT-001,,AccountId,AI Extracted,Identify the account from the conversation context or the current page record and link the case to it.
+CRM-INT-003-ACT-001-DTL-003,CRM-INT-003-ACT-001,,Priority,Hardcoded,High
+CRM-INT-003-ACT-001-DTL-004,CRM-INT-003-ACT-001,,Status,Hardcoded,New
+CRM-INT-003-ACT-001-DTL-005,CRM-INT-003-ACT-001,,Description,AI Extracted,Summarize the urgent/frustrated issue as described by the user in the conversation.
+OPP-INT-001-ACT-002-DTL-001,OPP-INT-001-ACT-002,,Subject,Hardcoded,Closed Won Follow-up: Schedule onboarding kickoff
+OPP-INT-001-ACT-002-DTL-002,OPP-INT-001-ACT-002,,Description,AI Extracted,Summarize any next steps or handoff details mentioned by the user after closing the deal.
+OPP-INT-001-ACT-002-DTL-003,OPP-INT-001-ACT-002,,Status,Hardcoded,Not Started
+OPP-INT-001-ACT-002-DTL-004,OPP-INT-001-ACT-002,,Priority,Hardcoded,High
+OPP-INT-002-ACT-002-DTL-001,OPP-INT-002-ACT-002,,Subject,Hardcoded,Closed Lost Analysis: Document loss reason and lessons learned
+OPP-INT-002-ACT-002-DTL-002,OPP-INT-002-ACT-002,,Description,AI Extracted,Extract the reason for losing the deal from the conversation — competitor, pricing, timing, or no decision.
+OPP-INT-002-ACT-002-DTL-003,OPP-INT-002-ACT-002,,Status,Hardcoded,Not Started
+OPP-INT-002-ACT-002-DTL-004,OPP-INT-002-ACT-002,,Priority,Hardcoded,Normal
+OPP-INT-003-ACT-001-DTL-001,OPP-INT-003-ACT-001,,Description,AI Extracted,"Note this opportunity as stalled. Prepend STALLED: to the opportunity description. Include the reason for stalling from the conversation — budget freeze, champion change, no next steps, etc."
+OPP-INT-003-ACT-002-DTL-001,OPP-INT-003-ACT-002,,Subject,Hardcoded,Stalled Deal: Re-engagement action required
+OPP-INT-003-ACT-002-DTL-002,OPP-INT-003-ACT-002,,Description,AI Extracted,Summarize why the deal stalled based on the user's description in the conversation.
+OPP-INT-003-ACT-002-DTL-003,OPP-INT-003-ACT-002,,Status,Hardcoded,Not Started
+OPP-INT-003-ACT-002-DTL-004,OPP-INT-003-ACT-002,,Priority,Hardcoded,Normal
+OPP-INT-005-ACT-001-DTL-001,OPP-INT-005-ACT-001,,Description,AI Extracted,"Note that this opportunity has an overdue close date. Prepend OVERDUE CLOSE DATE: to the opportunity description. Include the original close date and any context about why the deal slipped from the conversation."
+CPQ-INT-004-ACT-002-DTL-001,CPQ-INT-004-ACT-002,,Subject,Hardcoded,Discount Request: Manager approval required before applying
+CPQ-INT-004-ACT-002-DTL-002,CPQ-INT-004-ACT-002,,Description,AI Extracted,Extract the discount percentage requested and the quote or product it applies to from the conversation.
+CPQ-INT-004-ACT-002-DTL-003,CPQ-INT-004-ACT-002,,Status,Hardcoded,Not Started
+CPQ-INT-004-ACT-002-DTL-004,CPQ-INT-004-ACT-002,,Priority,Hardcoded,High
+CPQ-INT-005-ACT-002-DTL-001,CPQ-INT-005-ACT-002,,Subject,AI Extracted,Extract the quote name or number that requires approval from the conversation.
+CPQ-INT-005-ACT-002-DTL-002,CPQ-INT-005-ACT-002,,Description,AI Extracted,Summarize what approval is needed — amount, discount level, or specific quote terms — as mentioned by the user.
+CPQ-INT-005-ACT-002-DTL-003,CPQ-INT-005-ACT-002,,Status,Hardcoded,Not Started
+CPQ-INT-005-ACT-002-DTL-004,CPQ-INT-005-ACT-002,,Priority,Hardcoded,High
+DOC-INT-004-ACT-002-DTL-001,DOC-INT-004-ACT-002,,Subject,Hardcoded,Document Not Found: Search support request
+DOC-INT-004-ACT-002-DTL-002,DOC-INT-004-ACT-002,,Description,AI Extracted,Describe what document was searched for and why it is needed based on the user's conversation.
+DOC-INT-004-ACT-002-DTL-003,DOC-INT-004-ACT-002,,Priority,Hardcoded,Normal
+DOC-INT-004-ACT-002-DTL-004,DOC-INT-004-ACT-002,,Status,Hardcoded,New
+DOC-INT-005-ACT-001-DTL-001,DOC-INT-005-ACT-001,,Description,AI Extracted,"Prepend SENSITIVE DOCUMENT: to account description. Note the type of sensitive document the user mentioned and flag that document access controls should be reviewed. Include today's date."
+PIPE-INT-004-ACT-001-DTL-001,PIPE-INT-004-ACT-001,,Description,AI Extracted,"Flag this opportunity as must-win. Prepend MUST-WIN: to the opportunity description. Include the strategic reason from the conversation — key account, competitor threat, executive interest, etc."
+PIPE-INT-004-ACT-002-DTL-001,PIPE-INT-004-ACT-002,,Subject,Hardcoded,Must-Win Deal: Executive attention and daily review required
+PIPE-INT-004-ACT-002-DTL-002,PIPE-INT-004-ACT-002,,Description,AI Extracted,Summarize why this deal is must-win and what strategic context the user mentioned in the conversation.
+PIPE-INT-004-ACT-002-DTL-003,PIPE-INT-004-ACT-002,,Status,Hardcoded,Not Started
+PIPE-INT-004-ACT-002-DTL-004,PIPE-INT-004-ACT-002,,Priority,Hardcoded,High
+PIPE-INT-005-ACT-001-DTL-001,PIPE-INT-005-ACT-001,,Subject,Hardcoded,Pipeline Gap Identified: Immediate prospecting and pipeline build required
+PIPE-INT-005-ACT-001-DTL-002,PIPE-INT-005-ACT-001,,Description,AI Extracted,Summarize the pipeline gap — what probability threshold returned no results and what the recommended actions are.
+PIPE-INT-005-ACT-001-DTL-003,PIPE-INT-005-ACT-001,,Status,Hardcoded,Not Started
+PIPE-INT-005-ACT-001-DTL-004,PIPE-INT-005-ACT-001,,Priority,Hardcoded,High
+CASE-INT-005-ACT-002-DTL-001,CASE-INT-005-ACT-002,,Subject,Hardcoded,URGENT: Critical Case Escalation — Immediate Action Required
+CASE-INT-005-ACT-002-DTL-002,CASE-INT-005-ACT-002,,Description,AI Extracted,Describe the urgency and critical nature of the case situation based on the user's message in the conversation.
+CASE-INT-005-ACT-002-DTL-003,CASE-INT-005-ACT-002,,Status,Hardcoded,Not Started
+CASE-INT-005-ACT-002-DTL-004,CASE-INT-005-ACT-002,,Priority,Hardcoded,High
+CASE-INT-006-ACT-001-DTL-001,CASE-INT-006-ACT-001,,Subject,Hardcoded,Customer at Risk of Churning: Immediate retention call required
+CASE-INT-006-ACT-001-DTL-002,CASE-INT-006-ACT-001,,Description,AI Extracted,Summarize the churn signals from the conversation — what has the customer said that indicates they may leave or cancel.
+CASE-INT-006-ACT-001-DTL-003,CASE-INT-006-ACT-001,,Status,Hardcoded,Not Started
+CASE-INT-006-ACT-001-DTL-004,CASE-INT-006-ACT-001,,Priority,Hardcoded,High
+CASE-INT-007-ACT-001-DTL-001,CASE-INT-007-ACT-001,,Description,AI Extracted,"Note SLA status on this case. Prepend SLA BREACH: to the case description. Include when the SLA was breached or the SLA deadline, and the current case status, from the conversation context."
+CASE-INT-007-ACT-002-DTL-001,CASE-INT-007-ACT-002,,Subject,Hardcoded,SLA Breach: Immediate escalation and case closure required
+CASE-INT-007-ACT-002-DTL-002,CASE-INT-007-ACT-002,,Description,AI Extracted,Summarize the SLA breach details — which case, when it breached, and what the customer impact is.
+CASE-INT-007-ACT-002-DTL-003,CASE-INT-007-ACT-002,,Status,Hardcoded,Not Started
+CASE-INT-007-ACT-002-DTL-004,CASE-INT-007-ACT-002,,Priority,Hardcoded,High
+SPE-INT-001-ACT-001-DTL-001,SPE-INT-001-ACT-001,,Subject,AI Extracted,Summarize the arrest situation from the conversation and create a concise case subject.
+SPE-INT-001-ACT-001-DTL-002,SPE-INT-001-ACT-001,,Description,AI Extracted,Describe the full arrest or detention situation as reported by the user in the conversation.
+SPE-INT-001-ACT-001-DTL-003,SPE-INT-001-ACT-001,,Priority,Hardcoded,High
+SPE-INT-001-ACT-001-DTL-004,SPE-INT-001-ACT-001,,Status,Hardcoded,New
+SPE-INT-002-ACT-001-DTL-001,SPE-INT-002-ACT-001,,Subject,AI Extracted,Create a concise subject describing the assault incident from the conversation.
+SPE-INT-002-ACT-001-DTL-002,SPE-INT-002-ACT-001,,Description,AI Extracted,Document the assault incident as described by the user — include all relevant details shared in the chat.
+SPE-INT-002-ACT-001-DTL-003,SPE-INT-002-ACT-001,,Priority,Hardcoded,High
+SPE-INT-002-ACT-001-DTL-004,SPE-INT-002-ACT-001,,Status,Hardcoded,New
+SPE-INT-003-ACT-001-DTL-001,SPE-INT-003-ACT-001,,Subject,AI Extracted,Summarize the legal issue from the conversation.
+SPE-INT-003-ACT-001-DTL-002,SPE-INT-003-ACT-001,,Description,AI Extracted,Describe the legal problem or query raised by the user.
+SPE-INT-003-ACT-001-DTL-003,SPE-INT-003-ACT-001,,Priority,Hardcoded,Medium
+SPE-INT-003-ACT-001-DTL-004,SPE-INT-003-ACT-001,,Status,Hardcoded,New
+SPE-INT-004-ACT-001-DTL-001,SPE-INT-004-ACT-001,,Subject,AI Extracted,Create a concise case subject describing the car accident from the conversation.
+SPE-INT-004-ACT-001-DTL-002,SPE-INT-004-ACT-001,,Description,AI Extracted,"Summarize the accident details from the conversation — location, injuries, and what happened."
+SPE-INT-004-ACT-001-DTL-003,SPE-INT-004-ACT-001,,Priority,Hardcoded,High
+SPE-INT-004-ACT-001-DTL-004,SPE-INT-004-ACT-001,,Status,Hardcoded,New
+SPE-INT-005-ACT-001-DTL-001,SPE-INT-005-ACT-001,,Subject,AI Extracted,Create a concise case subject describing the emergency from the conversation.
+SPE-INT-005-ACT-001-DTL-002,SPE-INT-005-ACT-001,,Description,AI Extracted,Summarize the emergency situation fully as described by the user.
+SPE-INT-005-ACT-001-DTL-003,SPE-INT-005-ACT-001,,Priority,Hardcoded,High
+SPE-INT-005-ACT-001-DTL-004,SPE-INT-005-ACT-001,,Status,Hardcoded,New
+SPE-INT-006-ACT-001-DTL-001,SPE-INT-006-ACT-001,,Subject,AI Extracted,Summarize the medical or hospital situation from the conversation.
+SPE-INT-006-ACT-001-DTL-002,SPE-INT-006-ACT-001,,Description,AI Extracted,Document the hospital or medical situation as described by the user.
+SPE-INT-006-ACT-001-DTL-003,SPE-INT-006-ACT-001,,Priority,Hardcoded,High
+SPE-INT-006-ACT-001-DTL-004,SPE-INT-006-ACT-001,,Status,Hardcoded,New
+SPE-INT-007-ACT-001-DTL-001,SPE-INT-007-ACT-001,,Subject,AI Extracted,Summarize the lost document situation — what type of document was lost.
+SPE-INT-007-ACT-001-DTL-002,SPE-INT-007-ACT-001,,Description,AI Extracted,Describe which document is lost and any relevant context.
+SPE-INT-007-ACT-001-DTL-003,SPE-INT-007-ACT-001,,Priority,Hardcoded,Medium
+SPE-INT-007-ACT-001-DTL-004,SPE-INT-007-ACT-001,,Status,Hardcoded,New
+SPE-INT-008-ACT-001-DTL-001,SPE-INT-008-ACT-001,,Subject,Hardcoded,URGENT: Ambulance / Emergency Services Not Arrived
+SPE-INT-008-ACT-001-DTL-002,SPE-INT-008-ACT-001,,Description,AI Extracted,Document the full details of when emergency services were called and why they have not arrived.
+SPE-INT-008-ACT-001-DTL-003,SPE-INT-008-ACT-001,,Priority,Hardcoded,High
+SPE-INT-008-ACT-001-DTL-004,SPE-INT-008-ACT-001,,Status,Hardcoded,New
+SPE-INT-009-ACT-001-DTL-001,SPE-INT-009-ACT-001,,Subject,AI Extracted,Summarize the police-related situation from the conversation.
+SPE-INT-009-ACT-001-DTL-002,SPE-INT-009-ACT-001,,Description,AI Extracted,Document the details of the police involvement as described by the user.
+SPE-INT-009-ACT-001-DTL-003,SPE-INT-009-ACT-001,,Priority,Hardcoded,High
+SPE-INT-009-ACT-001-DTL-004,SPE-INT-009-ACT-001,,Status,Hardcoded,New
+SPE-INT-010-ACT-001-DTL-001,SPE-INT-010-ACT-001,,Subject,AI Extracted,Summarize the visa rejection situation from the conversation.
+SPE-INT-010-ACT-001-DTL-002,SPE-INT-010-ACT-001,,Description,AI Extracted,"Document the details of the visa rejection — country, visa type, reason if given."
+SPE-INT-010-ACT-001-DTL-003,SPE-INT-010-ACT-001,,Priority,Hardcoded,Medium
+SPE-INT-010-ACT-001-DTL-004,SPE-INT-010-ACT-001,,Status,Hardcoded,New
+SPE-INT-016-ACT-001-DTL-001,SPE-INT-016-ACT-001,,Subject,AI Extracted,Summarize the situation where the user is stuck — what they are trapped in or unable to do.
+SPE-INT-016-ACT-001-DTL-002,SPE-INT-016-ACT-001,,Description,AI Extracted,"Document the full context of the user being stuck — where they are, what happened, what help they need."
+SPE-INT-016-ACT-001-DTL-003,SPE-INT-016-ACT-001,,Priority,Hardcoded,High
+SPE-INT-016-ACT-001-DTL-004,SPE-INT-016-ACT-001,,Status,Hardcoded,New
+SPE-INT-017-ACT-001-DTL-001,SPE-INT-017-ACT-001,,Subject,AI Extracted,Create a concise complaint subject from the conversation.
+SPE-INT-017-ACT-001-DTL-002,SPE-INT-017-ACT-001,,Description,AI Extracted,"Document the full complaint — what happened, when, and what outcome the user expects."
+SPE-INT-017-ACT-001-DTL-003,SPE-INT-017-ACT-001,,Priority,Hardcoded,Medium
+SPE-INT-017-ACT-001-DTL-004,SPE-INT-017-ACT-001,,Status,Hardcoded,New
+SPE-INT-017-ACT-002-DTL-001,SPE-INT-017-ACT-002,,Description,AI Extracted,"Prepend COMPLAINT FILED: to the account description. Summarize the nature of the complaint from the conversation and include today's date."
+SPE-INT-018-ACT-001-DTL-001,SPE-INT-018-ACT-001,,Subject,AI Extracted,Summarize the issue that requires presidential or executive escalation.
+SPE-INT-018-ACT-001-DTL-002,SPE-INT-018-ACT-001,,Description,AI Extracted,"Document the full context — previous attempts, the core issue, and the expected resolution."
+SPE-INT-018-ACT-001-DTL-003,SPE-INT-018-ACT-001,,Priority,Hardcoded,High
+SPE-INT-018-ACT-001-DTL-004,SPE-INT-018-ACT-001,,Status,Hardcoded,New
+SPE-INT-018-ACT-002-DTL-001,SPE-INT-018-ACT-002,,Description,AI Extracted,"Prepend PRESIDENTIAL COMPLAINT: to the account description. Include the nature of the escalation and today's date as extracted from the conversation."
+SPE-INT-021-ACT-001-DTL-001,SPE-INT-021-ACT-001,,Subject,Hardcoded,Mental Health Support Required — Immediate Follow-up Needed
+SPE-INT-021-ACT-001-DTL-002,SPE-INT-021-ACT-001,,Description,AI Extracted,Carefully summarise what the user has shared about their mental health situation — use empathetic clinical language. Do not include anything distressing if read later.
+SPE-INT-021-ACT-001-DTL-003,SPE-INT-021-ACT-001,,Priority,Hardcoded,High
+SPE-INT-021-ACT-001-DTL-004,SPE-INT-021-ACT-001,,Status,Hardcoded,New
+SPE-INT-021-ACT-002-DTL-001,SPE-INT-021-ACT-002,,Description,Hardcoded,WELFARE FLAG: Customer has indicated mental health concern. Welfare team follow-up required. Handle with sensitivity and care.
+IPD-INT-002-ACT-001-DTL-001,IPD-INT-002-ACT-001,,LastName,AI Extracted,Extract the user's name from the conversation if mentioned; default to 'Chat Prospect' if not provided
+IPD-INT-002-ACT-001-DTL-002,IPD-INT-002-ACT-001,,Company,Hardcoded,Self - Individual
+IPD-INT-002-ACT-001-DTL-003,IPD-INT-002-ACT-001,,LeadSource,Hardcoded,Chat
+IPD-INT-002-ACT-001-DTL-004,IPD-INT-002-ACT-001,,Status,Hardcoded,New
+IPD-INT-002-ACT-001-DTL-005,IPD-INT-002-ACT-001,,Description,AI Extracted,"Summarise the pre-existing condition mentioned by the user and the type of plan they are asking about — include condition name, plan type interest, and any budget or coverage details shared"
+IPD-INT-005-ACT-001-DTL-001,IPD-INT-005-ACT-001,,LastName,AI Extracted,Extract the user's name from the conversation if provided; otherwise use 'Chat Prospect'
+IPD-INT-005-ACT-001-DTL-002,IPD-INT-005-ACT-001,,Company,Hardcoded,Self - Individual
+IPD-INT-005-ACT-001-DTL-003,IPD-INT-005-ACT-001,,LeadSource,Hardcoded,Chat
+IPD-INT-005-ACT-001-DTL-004,IPD-INT-005-ACT-001,,Status,Hardcoded,Hot
+IPD-INT-005-ACT-001-DTL-005,IPD-INT-005-ACT-001,,Description,AI Extracted,"Summarise which plan the user expressed interest in, their budget, family size, age, and any medical conditions mentioned during the conversation"
+IPD-INT-006-ACT-001-DTL-001,IPD-INT-006-ACT-001,,LastName,AI Extracted,Extract user's name if mentioned; default to 'Unmet Need Prospect'
+IPD-INT-006-ACT-001-DTL-002,IPD-INT-006-ACT-001,,Company,Hardcoded,Self - Individual
+IPD-INT-006-ACT-001-DTL-003,IPD-INT-006-ACT-001,,LeadSource,Hardcoded,Chat
+IPD-INT-006-ACT-001-DTL-004,IPD-INT-006-ACT-001,,Status,Hardcoded,New
+IPD-INT-006-ACT-001-DTL-005,IPD-INT-006-ACT-001,,Description,AI Extracted,"Summarise what the user was looking for that could not be matched — conditions required, budget cap, coverage amount, plan type — so the product team can identify portfolio gaps"
+IPD-INT-007-ACT-001-DTL-001,IPD-INT-007-ACT-001,,Description,AI Extracted,"Append to existing description: COMPETITIVE INTEL: followed by the competitor name or plan mentioned and what the user said about it (e.g. price, features, benefits they preferred)"

@@ -1,0 +1,49 @@
+ccai_qa__AI_Intent_Action__c,ccai_qa__Field_API_Name__c,ccai_qa__Type__c,Notes_DoNotImport
+REPLACE_WITH_account_at_risk_UPDATE_ACTION_ID,Description,AI Extracted,Account.Description — AI extracts the at-risk details from conversation
+REPLACE_WITH_account_at_risk_TASK_ACTION_ID,Subject,Hardcoded,Set value in UI: Account Review Required — At Risk Account
+REPLACE_WITH_account_at_risk_TASK_ACTION_ID,Description,AI Extracted,AI extracts reason for risk
+REPLACE_WITH_account_at_risk_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: High
+REPLACE_WITH_account_at_risk_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_user_frustrated_urgent_CASE_ACTION_ID,Subject,AI Extracted,AI extracts the issue subject
+REPLACE_WITH_user_frustrated_urgent_CASE_ACTION_ID,AccountId,AI Extracted,AI extracts account context
+REPLACE_WITH_user_frustrated_urgent_CASE_ACTION_ID,Priority,Hardcoded,Set value in UI: High
+REPLACE_WITH_user_frustrated_urgent_CASE_ACTION_ID,Status,Hardcoded,Set value in UI: New
+REPLACE_WITH_user_frustrated_urgent_CASE_ACTION_ID,Description,AI Extracted,AI extracts full description of frustration
+REPLACE_WITH_deal_closed_won_TASK_ACTION_ID,Subject,Hardcoded,Set value in UI: Closed Won Follow-up Required
+REPLACE_WITH_deal_closed_won_TASK_ACTION_ID,Description,AI Extracted,AI extracts any next steps mentioned
+REPLACE_WITH_deal_closed_won_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_deal_closed_won_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: High
+REPLACE_WITH_deal_closed_lost_TASK_ACTION_ID,Subject,Hardcoded,Set value in UI: Closed Lost — Analysis Required
+REPLACE_WITH_deal_closed_lost_TASK_ACTION_ID,Description,AI Extracted,AI extracts reason for loss from conversation
+REPLACE_WITH_deal_closed_lost_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_deal_closed_lost_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: Normal
+REPLACE_WITH_deal_stalled_UPDATE_ACTION_ID,Description,AI Extracted,Opportunity.Description — AI notes the stall reason
+REPLACE_WITH_deal_stalled_TASK_ACTION_ID,Subject,Hardcoded,Set value in UI: Stalled Deal — Re-engagement Required
+REPLACE_WITH_deal_stalled_TASK_ACTION_ID,Description,AI Extracted,AI extracts stall context
+REPLACE_WITH_deal_stalled_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_deal_stalled_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: Normal
+REPLACE_WITH_discount_requested_TASK_ACTION_ID,Subject,Hardcoded,Set value in UI: Discount Request — Manager Approval Needed
+REPLACE_WITH_discount_requested_TASK_ACTION_ID,Description,AI Extracted,AI extracts quoted percentage and context
+REPLACE_WITH_discount_requested_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_discount_requested_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: High
+REPLACE_WITH_quote_approval_needed_TASK_ACTION_ID,Subject,AI Extracted,AI extracts the quote name or number
+REPLACE_WITH_quote_approval_needed_TASK_ACTION_ID,Description,AI Extracted,AI extracts approval details and deadline
+REPLACE_WITH_quote_approval_needed_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_quote_approval_needed_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: High
+REPLACE_WITH_document_not_found_CASE_ACTION_ID,Subject,Hardcoded,Set value in UI: Document Not Found — Search Support Request
+REPLACE_WITH_document_not_found_CASE_ACTION_ID,Description,AI Extracted,AI extracts what document was searched and why it matters
+REPLACE_WITH_document_not_found_CASE_ACTION_ID,Priority,Hardcoded,Set value in UI: Normal
+REPLACE_WITH_document_not_found_CASE_ACTION_ID,Status,Hardcoded,Set value in UI: New
+REPLACE_WITH_must_win_deal_flag_UPDATE_ACTION_ID,Description,AI Extracted,Opportunity.Description — AI notes must-win context
+REPLACE_WITH_must_win_deal_flag_TASK_ACTION_ID,Subject,Hardcoded,Set value in UI: Must-Win Deal — Executive Attention Required
+REPLACE_WITH_must_win_deal_flag_TASK_ACTION_ID,Description,AI Extracted,AI extracts deal details and risk
+REPLACE_WITH_must_win_deal_flag_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_must_win_deal_flag_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: High
+REPLACE_WITH_case_urgent_critical_TASK_ACTION_ID,Subject,Hardcoded,Set value in UI: URGENT — Critical Case Escalation
+REPLACE_WITH_case_urgent_critical_TASK_ACTION_ID,Description,AI Extracted,AI extracts the urgency details
+REPLACE_WITH_case_urgent_critical_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_case_urgent_critical_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: High
+REPLACE_WITH_customer_at_risk_TASK_ACTION_ID,Subject,Hardcoded,Set value in UI: Customer at Risk — Immediate Follow-up Required
+REPLACE_WITH_customer_at_risk_TASK_ACTION_ID,Description,AI Extracted,AI extracts churn signals from conversation
+REPLACE_WITH_customer_at_risk_TASK_ACTION_ID,Status,Hardcoded,Set value in UI: Not Started
+REPLACE_WITH_customer_at_risk_TASK_ACTION_ID,Priority,Hardcoded,Set value in UI: High

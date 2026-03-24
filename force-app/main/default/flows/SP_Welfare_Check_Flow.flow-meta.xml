@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <description>SP Energy Bot — Welfare Check Flow. Triggered by the #Mental Health# intent via GPTfy Intent Action Framework. Creates a high-priority welfare follow-up Task and posts a confidential Chatter alert to the welfare support team when a customer indicates a mental health crisis.</description>
+    <label>SP Welfare Check Flow</label>
+    <processType>AutoLaunchedFlow</processType>
+    <status>Active</status>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         START → Create Welfare Task → Create Welfare Chatter Post → END
+         ═══════════════════════════════════════════════════════════ -->
+
+    <start>
+        <locationX>182</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Create_Welfare_Task</targetReference>
+        </connector>
+    </start>
+
+    <!-- Step 1: Create a welfare check Task assigned to the Welfare Officer -->
+    <recordCreates>
+        <name>Create_Welfare_Task</name>
+        <label>Create Welfare Check Task</label>
+        <locationX>182</locationX>
+        <locationY>120</locationY>
+        <connector>
+            <targetReference>Create_Welfare_Chatter</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>Subject</field>
+            <value>
+                <stringValue>WELFARE CHECK REQUIRED — Mental Health Concern Detected via GPTfy</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Description</field>
+            <value>
+                <stringValue>A customer has indicated a potential mental health concern via the SP Energy GPTfy chatbot. The #Mental Health# intent was triggered during the conversation. WELFARE OFFICER: please make contact with this customer today. Handle with sensitivity and care. Review the associated support case and account record for full context. Samaritans referral was provided in the chat: 116 123 (free, 24/7) or text SHOUT to 85258.</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Priority</field>
+            <value>
+                <stringValue>High</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Status</field>
+            <value>
+                <stringValue>Not Started</stringValue>
+            </value>
+        </inputAssignments>
+        <object>Task</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+
+    <!-- Step 2: Post confidential Chatter alert for welfare team -->
+    <recordCreates>
+        <name>Create_Welfare_Chatter</name>
+        <label>Post Welfare Team Chatter Alert</label>
+        <locationX>182</locationX>
+        <locationY>240</locationY>
+        <inputAssignments>
+            <field>Body</field>
+            <value>
+                <stringValue>⚠ WELFARE ALERT (Handle with Care): A customer has indicated a mental health concern via SP Energy GPTfy chatbot (#Mental Health# intent). Welfare Officer: please review the support case and make sensitive contact today. The customer was provided with crisis resources (Samaritans: 116 123). A welfare follow-up Task has been created. Please treat this with the utmost care and confidentiality.</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Type</field>
+            <value>
+                <stringValue>TextPost</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>ParentId</field>
+            <value>
+                <elementReference>$User.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <object>FeedItem</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+
+</Flow>

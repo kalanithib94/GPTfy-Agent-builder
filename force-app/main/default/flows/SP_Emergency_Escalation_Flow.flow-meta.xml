@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <description>SP Energy Bot — Emergency Escalation Flow. Triggered by the #Emergency# intent via GPTfy Intent Action Framework. Creates a high-priority internal Task and posts a Chatter alert to signal an emergency escalation.</description>
+    <label>SP Emergency Escalation Flow</label>
+    <processType>AutoLaunchedFlow</processType>
+    <status>Active</status>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         START → Create Emergency Task → Create Chatter Post → END
+         ═══════════════════════════════════════════════════════════ -->
+
+    <start>
+        <locationX>182</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Create_Emergency_Task</targetReference>
+        </connector>
+    </start>
+
+    <!-- Step 1: Create a high-priority Task for the on-call emergency team -->
+    <recordCreates>
+        <name>Create_Emergency_Task</name>
+        <label>Create Emergency Escalation Task</label>
+        <locationX>182</locationX>
+        <locationY>120</locationY>
+        <connector>
+            <targetReference>Create_Chatter_Post</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>Subject</field>
+            <value>
+                <stringValue>EMERGENCY ALERT: GPTfy Intent Triggered — Immediate Action Required</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Description</field>
+            <value>
+                <stringValue>An emergency situation has been detected via the SP Energy GPTfy chatbot. The #Emergency# intent was triggered. Please follow up with the customer immediately. Review the associated Case record for full details.</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Priority</field>
+            <value>
+                <stringValue>High</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Status</field>
+            <value>
+                <stringValue>Not Started</stringValue>
+            </value>
+        </inputAssignments>
+        <object>Task</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+
+    <!-- Step 2: Post Chatter alert to the org-wide feed -->
+    <recordCreates>
+        <name>Create_Chatter_Post</name>
+        <label>Post Chatter Emergency Alert</label>
+        <locationX>182</locationX>
+        <locationY>240</locationY>
+        <inputAssignments>
+            <field>Body</field>
+            <value>
+                <stringValue>🚨 EMERGENCY ALERT: An emergency situation has been reported via the SP Energy GPTfy chatbot. The #Emergency# intent was triggered. Please review the associated support case immediately and contact the customer. On-call team: action required.</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Type</field>
+            <value>
+                <stringValue>TextPost</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>ParentId</field>
+            <value>
+                <elementReference>$User.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <object>FeedItem</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+
+</Flow>

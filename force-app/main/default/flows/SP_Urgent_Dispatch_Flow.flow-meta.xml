@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>65.0</apiVersion>
+    <description>SP Energy Bot — Urgent Dispatch Flow. Triggered by the #Missing Ambulance# intent via GPTfy Intent Action Framework. Creates a critical-priority Task for the on-call emergency manager when an ambulance has been called but has not arrived.</description>
+    <label>SP Urgent Dispatch Flow</label>
+    <processType>AutoLaunchedFlow</processType>
+    <status>Active</status>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         START → Create Urgent Dispatch Task → Create Chatter Post → END
+         ═══════════════════════════════════════════════════════════ -->
+
+    <start>
+        <locationX>182</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Create_Dispatch_Task</targetReference>
+        </connector>
+    </start>
+
+    <!-- Step 1: Create an urgent Task for the on-call emergency manager -->
+    <recordCreates>
+        <name>Create_Dispatch_Task</name>
+        <label>Create Urgent Dispatch Task</label>
+        <locationX>182</locationX>
+        <locationY>120</locationY>
+        <connector>
+            <targetReference>Create_Dispatch_Chatter</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>Subject</field>
+            <value>
+                <stringValue>URGENT DISPATCH: Ambulance/Emergency Services Not Arrived — Follow Up Now</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Description</field>
+            <value>
+                <stringValue>CRITICAL: A customer has reported via SP Energy GPTfy chatbot that emergency services (ambulance) were called but have NOT arrived. The #Missing Ambulance# intent was triggered. On-call manager: please contact the customer immediately and escalate to emergency services if required. Review the associated Case record for full conversation details.</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Priority</field>
+            <value>
+                <stringValue>High</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Status</field>
+            <value>
+                <stringValue>Not Started</stringValue>
+            </value>
+        </inputAssignments>
+        <object>Task</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+
+    <!-- Step 2: Post urgent Chatter alert -->
+    <recordCreates>
+        <name>Create_Dispatch_Chatter</name>
+        <label>Post Urgent Dispatch Chatter Alert</label>
+        <locationX>182</locationX>
+        <locationY>240</locationY>
+        <inputAssignments>
+            <field>Body</field>
+            <value>
+                <stringValue>🚨 CRITICAL DISPATCH ALERT: A customer has reported that emergency services (ambulance) have NOT arrived after being called. This was detected via SP Energy GPTfy chatbot (#Missing Ambulance# intent). On-call emergency manager: contact customer immediately. A high-priority Task has been created. Review the associated support case now.</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Type</field>
+            <value>
+                <stringValue>TextPost</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>ParentId</field>
+            <value>
+                <elementReference>$User.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <object>FeedItem</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+
+</Flow>

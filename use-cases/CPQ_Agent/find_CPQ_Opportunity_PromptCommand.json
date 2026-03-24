@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Opportunity Id (15 or 18 char). Use this OR name."
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Opportunity name (partial match). Returns primaryOpportunityId for next steps."
+    }
+  },
+  "additionalProperties": false
+}

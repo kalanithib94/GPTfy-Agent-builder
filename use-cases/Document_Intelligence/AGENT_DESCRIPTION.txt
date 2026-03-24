@@ -1,0 +1,1 @@
+Document Intelligence Agent: Find and identify Salesforce Files (documents) by name. Search across all files or limit to documents linked to a specific record (Account, Opportunity, Case, etc.). Read-only; no create, update, or delete. Use find_Document_by_Name with documentName (required) and optional linkedRecordId and limit.

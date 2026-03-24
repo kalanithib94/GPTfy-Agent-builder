@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["name", "closeDate", "stageName"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "REQUIRED. Opportunity name. E.g. 'Q1 2026 CPQ Deal'."
+    },
+    "closeDate": {
+      "type": "string",
+      "description": "REQUIRED. Close date YYYY-MM-DD. E.g. '2026-03-31'."
+    },
+    "stageName": {
+      "type": "string",
+      "description": "REQUIRED. Stage: Prospecting, Qualification, Needs Analysis, Value Proposition, Proposal/Price Quote, Negotiation/Review, Closed Won, Closed Lost."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account Id. Use this OR accountName."
+    },
+    "accountName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Account name if accountId not available."
+    },
+    "amount": {
+      "type": "number",
+      "description": "Deal amount. E.g. 100000 for $100K."
+    },
+    "probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Win probability 0-100."
+    },
+    "pricebook2Id": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Pricebook to use for quotes/lines. Get from find_Pricebook."
+    },
+    "description": {
+      "type": "string",
+      "description": "Deal description."
+    },
+    "type": {
+      "type": "string",
+      "description": "E.g. New Business, Renewal."
+    },
+    "nextStep": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Next action."
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Opportunity Id to update. Use this OR name."
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Opportunity name to find (if opportunityId not provided)."
+    },
+    "stageName": {
+      "type": "string",
+      "description": "New stage."
+    },
+    "closeDate": {
+      "type": "string",
+      "description": "New close date YYYY-MM-DD."
+    },
+    "amount": {
+      "type": "number",
+      "description": "New amount."
+    },
+    "probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "description": {
+      "type": "string"
+    },
+    "pricebook2Id": {
+      "type": "string",
+      "maxLength": 18
+    }
+  },
+  "additionalProperties": false
+}

@@ -103,9 +103,15 @@ global with sharing class OpportunityManagementHandler implements ccai.AIAgentic
                 return buildErrorResponse('closeDate is required to create an Opportunity');
             }
 
-            // StageName (REQUIRED)
+            // StageName (REQUIRED, validated against org picklist)
             if (parameters.containsKey('stageName')) {
-                newOpp.StageName = String.valueOf(parameters.get('stageName'));
+                String stageInput = String.valueOf(parameters.get('stageName')).trim();
+                String resolvedStage = resolveStageName(stageInput);
+                if (resolvedStage == null) {
+                    List<String> validStages = getValidStageNames();
+                    return buildErrorResponse('Invalid stage "' + stageInput + '". Valid stages: ' + String.join(validStages, ', '));
+                }
+                newOpp.StageName = resolvedStage;
             } else {
                 return buildErrorResponse('stageName is required to create an Opportunity');
             }
@@ -316,9 +322,18 @@ global with sharing class OpportunityManagementHandler implements ccai.AIAgentic
                 }
             }
 
-            // Update StageName
+            // Update StageName (validate against org picklist, use exact API value)
             if (parameters.containsKey('stageName')) {
-                oppToUpdate.StageName = String.valueOf(parameters.get('stageName'));
+                String newStage = String.valueOf(parameters.get('stageName')).trim();
+                if (String.isBlank(newStage)) {
+                    return buildErrorResponse('stageName cannot be blank');
+                }
+                String matchedStage = resolveStageName(newStage);
+                if (matchedStage == null) {
+                    List<String> validStages = getValidStageNames();
+                    return buildErrorResponse('Invalid stage "' + newStage + '". Valid stages for this org: ' + String.join(validStages, ', '));
+                }
+                oppToUpdate.StageName = matchedStage;
                 hasChanges = true;
             }
 
@@ -440,6 +455,33 @@ global with sharing class OpportunityManagementHandler implements ccai.AIAgentic
     }
 
     // ==================== HELPER METHODS ====================
+
+    /**
+     * Resolve user-provided stage to exact org picklist value (case-insensitive match)
+     * Returns null if no match
+     */
+    private String resolveStageName(String userInput) {
+        if (String.isBlank(userInput)) return null;
+        for (String valid : getValidStageNames()) {
+            if (valid.equalsIgnoreCase(userInput)) return valid;
+        }
+        return null;
+    }
+
+    /**
+     * Get valid StageName values from Opportunity picklist
+     */
+    private List<String> getValidStageNames() {
+        List<String> values = new List<String>();
+        try {
+            for (Schema.PicklistEntry pe : Opportunity.StageName.getDescribe().getPicklistValues()) {
+                if (pe.isActive()) values.add(pe.getValue());
+            }
+        } catch (Exception e) {
+            System.debug('Could not describe StageName picklist: ' + e.getMessage());
+        }
+        return values;
+    }
 
     /**
      * Lookup Account by name (with partial matching)

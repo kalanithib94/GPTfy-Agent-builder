@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Network_Type__c</fullName>
+    <label>Network Type</label>
+    <required>true</required>
+    <trackHistory>false</trackHistory>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value><fullName>HMO</fullName><default>false</default><label>HMO</label></value>
+            <value><fullName>PPO</fullName><default>true</default><label>PPO</label></value>
+            <value><fullName>TPA</fullName><default>false</default><label>TPA</label></value>
+            <value><fullName>EPO</fullName><default>false</default><label>EPO</label></value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

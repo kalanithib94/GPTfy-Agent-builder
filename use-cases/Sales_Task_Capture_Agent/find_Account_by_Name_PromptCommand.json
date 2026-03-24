@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "REQUIRED. Account name or distinctive substring the user wants to search (e.g. 'Acme', 'United Oil'). Call this function whenever the user asks to find, search, list, or look up accounts — do not answer from memory."
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Max rows. Default 10; use 20 if user asked for more."
+    }
+  }
+}

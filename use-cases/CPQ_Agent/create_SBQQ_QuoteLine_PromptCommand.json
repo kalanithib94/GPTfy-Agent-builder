@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["quantity"],
+  "properties": {
+    "quoteId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "SBQQ Quote Id. Use this OR quoteName. Get from find_SBQQ_Quote."
+    },
+    "quoteName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Quote name if quoteId not available."
+    },
+    "quantity": {
+      "type": "number",
+      "minimum": 0,
+      "description": "REQUIRED. Line quantity. E.g. 1, 5, 10."
+    },
+    "pricebookEntryId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "PricebookEntry Id from find_PricebookEntry. Prefer using find_PricebookEntry first with pricebookId and productName/productCode."
+    },
+    "productId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Product2 Id. Resolved via quote pricebook. Use productName or pricebookEntryId when possible."
+    },
+    "productName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Product name. Handler looks up PricebookEntry from quote's pricebook. Use find_PricebookEntry first to confirm product exists in pricebook."
+    },
+    "pricebookId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Override pricebook for lookup (default: quote's SBQQ__PriceBook__c or standard). Get from find_Pricebook."
+    },
+    "requiredByQuoteLineId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Parent quote line Id for bundle/option lines. Set this to create a bundle child line (SBQQ__RequiredBy__c)."
+    },
+    "SBQQ__ListPrice__c": {
+      "type": "number"
+    },
+    "SBQQ__Number__c": {
+      "type": "integer",
+      "description": "Line number on quote."
+    },
+    "SBQQ__CustomerPrice__c": {
+      "type": "number"
+    }
+  },
+  "additionalProperties": false
+}

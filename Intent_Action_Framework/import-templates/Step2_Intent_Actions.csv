@@ -1,0 +1,43 @@
+ccai_qa__AI_Agent_Intent__c,Notes_DoNotImport
+REPLACE_WITH_crm_greeting_INTENT_ID,Canned Response EN — configure Action Type + Language + Text in UI
+REPLACE_WITH_crm_greeting_INTENT_ID,Canned Response ES — configure Action Type + Language + Text in UI
+REPLACE_WITH_account_at_risk_INTENT_ID,Update Field (Account.Description) — configure Action Type + Object in UI
+REPLACE_WITH_account_at_risk_INTENT_ID,Create Record (Task) — configure Action Type + Object in UI
+REPLACE_WITH_account_at_risk_INTENT_ID,Canned Response — configure Action Type + Text in UI
+REPLACE_WITH_user_frustrated_urgent_INTENT_ID,Create Record (Case) — configure Action Type + Object in UI
+REPLACE_WITH_user_frustrated_urgent_INTENT_ID,Canned Response — configure Action Type + Text in UI
+REPLACE_WITH_crm_out_of_scope_INTENT_ID,Canned Response — configure Action Type + Text in UI
+REPLACE_WITH_deal_closed_won_INTENT_ID,Canned Response — configure Action Type + Text in UI
+REPLACE_WITH_deal_closed_won_INTENT_ID,Create Record (Task) — configure Action Type + Object in UI
+REPLACE_WITH_deal_closed_lost_INTENT_ID,Canned Response — configure Action Type + Text in UI
+REPLACE_WITH_deal_closed_lost_INTENT_ID,Create Record (Task) — configure Action Type + Object in UI
+REPLACE_WITH_deal_stalled_INTENT_ID,Update Field (Opportunity.Description) — configure in UI
+REPLACE_WITH_deal_stalled_INTENT_ID,Create Record (Task) — configure in UI
+REPLACE_WITH_deal_stalled_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_stages_clarification_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_cpq_greeting_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_cpq_out_of_scope_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_quote_expired_or_expiring_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_discount_requested_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_discount_requested_INTENT_ID,Create Record (Task) — configure in UI
+REPLACE_WITH_quote_approval_needed_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_quote_approval_needed_INTENT_ID,Create Record (Task) — configure in UI
+REPLACE_WITH_doc_greeting_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_upload_or_edit_request_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_document_not_found_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_document_not_found_INTENT_ID,Create Record (Case) — configure in UI
+REPLACE_WITH_search_tips_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_pipeline_forecast_overview_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_pipeline_hygiene_check_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_probability_explanation_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_must_win_deal_flag_INTENT_ID,Update Field (Opportunity.Description) — configure in UI
+REPLACE_WITH_must_win_deal_flag_INTENT_ID,Create Record (Task) — configure in UI
+REPLACE_WITH_must_win_deal_flag_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_case_resolved_ready_to_close_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_case_on_hold_waiting_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_no_case_id_provided_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_case_status_options_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_case_urgent_critical_INTENT_ID,Canned Response — configure in UI
+REPLACE_WITH_case_urgent_critical_INTENT_ID,Create Record (Task) — configure in UI
+REPLACE_WITH_customer_at_risk_of_churning_INTENT_ID,Create Record (Task) — configure in UI
+REPLACE_WITH_customer_at_risk_of_churning_INTENT_ID,Canned Response — configure in UI

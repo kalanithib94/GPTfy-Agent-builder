@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "quoteId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Quote Id to delete. Use this OR name."
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Quote name to find (if quoteId not provided)."
+    }
+  },
+  "additionalProperties": false
+}

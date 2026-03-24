@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "required": ["contactId"],
+  "properties": {
+    "contactId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "ONLY the Salesforce Contact Id (15 or 18 characters, starts with 003). Extract from explicit ID patterns or context when the user refers to a known contact record."
+    },
+    "subject": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Short summary of the IT issue for the case Subject. OPTIONAL — default applied if omitted."
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed symptoms, device/software, and steps tried. OPTIONAL."
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["Low", "Medium", "High"],
+      "description": "Use High for outage or urgent language; otherwise Medium or Low. OPTIONAL — defaults to Medium."
+    }
+  }
+}

@@ -1,27 +1,25 @@
 # Salesforce CRM Agent - Complete Use Case
 
 ## Overview
-A comprehensive AI Agent that handles core Salesforce CRM operations with **10 fully tested operations** across 4 functional areas, achieving **100% test pass rate** with comprehensive regression testing.
+A comprehensive AI Agent that handles core Salesforce CRM operations with **14 operations** across 6 functional areas: Account search, Case, Contact, Opportunity, Quote, and Opportunity Line Item management.
 
 ## ✅ Testing & Quality Assurance
 
 **Comprehensive Test Suite Results:**
-- **Total Tests**: 22 test scenarios
+- **Total Tests**: 22 test scenarios (core handlers)
 - **Pass Rate**: 100% ✓
-- **Operations Tested**: All 10 operations with multiple scenarios
+- **Operations**: 14 total (4 find + 5 create + 5 update)
 - **Test Coverage**: Create, Update, Lookup (by ID, name, partial match)
-- **Edge Cases**: Duplicate detection, null safety, account filtering
-
-All handlers have been regression tested with real-world scenarios to eliminate common issues.
+- **Edge Cases**: Duplicate detection, null safety, account filtering, stage validation
 
 ## 📁 Folder Structure
 
 ```
 Salesforce_CRM_Agent/
 ├── AGENT_DESCRIPTION.txt           # User-friendly agent description
-├── AGENT_SYSTEM_PROMPT.txt         # Unified system prompt for all 10 operations
+├── AGENT_SYSTEM_PROMPT.txt         # Unified system prompt for all 14 operations
 ├── README.md                       # This file
-├── test_all_handlers_comprehensive.apex  # Complete regression test suite (22 tests)
+├── test_all_handlers_comprehensive.apex  # Regression test suite
 │
 ├── Account_Intelligence/
 │   ├── AccountIntelligenceHandler.apex
@@ -40,17 +38,27 @@ Salesforce_CRM_Agent/
 │   ├── create_Contact_PromptCommand.json
 │   └── update_Contact_PromptCommand.json
 │
-└── Opportunity_Management/
-    ├── OpportunityManagementHandler.apex
-    ├── create_Opportunity_PromptCommand.json
-    └── update_Opportunity_PromptCommand.json
+├── Opportunity_Management/
+│   ├── OpportunityManagementHandler.apex
+│   ├── create_Opportunity_PromptCommand.json
+│   └── update_Opportunity_PromptCommand.json
+│
+├── Quote_Management/
+│   ├── QuoteManagementHandler.apex
+│   ├── create_Quote_PromptCommand.json
+│   └── update_Quote_PromptCommand.json
+│
+└── OpportunityLineItem_Management/
+    ├── OpportunityLineItemManagementHandler.apex
+    ├── create_OpportunityLineItem_PromptCommand.json
+    └── update_OpportunityLineItem_PromptCommand.json
 ```
 
-## 🎯 10 Operations Organized by Function
+## 🎯 14 Operations Organized by Function
 
 ### 🔍 Account Intelligence (4 Operations - Read-Only)
 1. **find_Account_by_Name** - Search accounts with fuzzy matching (handles typos)
-2. **find_Contacts_for_Account** - Get all contacts for an account
+2. **find_Contacts_for_Account** - Get all contacts for an account ("Who are the contacts at [company]?")
 3. **find_Opportunities_for_Account** - Get all deals/opportunities for an account
 4. **find_Cases_for_Account** - Get all support cases for an account
 
@@ -60,20 +68,30 @@ Salesforce_CRM_Agent/
 
 ### 👤 Contact Management (2 Operations - CRUD)
 7. **create_Contact** - Create contact records with full details
-8. **update_Contact** - Update contact information, accounts
+8. **update_Contact** - Update contact information, phone, email, title
 
 ### 💼 Opportunity Management (2 Operations - CRUD)
 9. **create_Opportunity** - Create sales opportunities/deals
-10. **update_Opportunity** - Update stages, amounts, close dates
+10. **update_Opportunity** - Update stages, amounts, close dates (validates stage against org picklist)
+
+### 📄 Quote Management (2 Operations - CRUD)
+11. **create_Quote** - Create quotes linked to opportunities
+12. **update_Quote** - Update quote status, expiration date, description
+
+### 📦 Opportunity Line Item Management (2 Operations - CRUD)
+13. **create_OpportunityLineItem** - Add products to opportunities
+14. **update_OpportunityLineItem** - Update quantity, price, discount on line items
 
 ## 🚀 Deployment Instructions
 
-### Step 1: Deploy Handler Classes (4 files)
+### Step 1: Deploy Handler Classes (6 files)
 Deploy all `.apex` handler classes to your Salesforce org from their respective folders:
 - Account_Intelligence/AccountIntelligenceHandler.apex
 - Case_Management/CaseManagementHandler.apex
 - Contact_Management/ContactManagementHandler.apex
 - Opportunity_Management/OpportunityManagementHandler.apex
+- Quote_Management/QuoteManagementHandler.apex
+- OpportunityLineItem_Management/OpportunityLineItemManagementHandler.apex
 
 All handlers use:
 - `global` visibility
@@ -82,9 +100,13 @@ All handlers use:
 - Standardized JSON responses
 - Full null safety for all lookups
 
-### Step 2: Create AI Prompt Records (10 records)
+**OpportunityManagementHandler** includes stage validation: StageName is validated against the org's Opportunity picklist before update; invalid stages return a clear error with valid values.
+
+### Step 2: Create AI Prompt Records (14 records)
 
 For each operation, create an AI Prompt record in Salesforce:
+
+**⚠️ Prompt Name is case-sensitive.** Use the exact names below (e.g. `create_Opportunity`, not `create_opportunity`). Avoid duplicate prompts with different casing – they can cause "Method is not defined" or wrong handler routing.
 
 #### Account Intelligence Prompts
 | Prompt Name | Handler Class | Method Name | JSON Schema |
@@ -114,13 +136,27 @@ For each operation, create an AI Prompt record in Salesforce:
 | create_Opportunity | OpportunityManagementHandler | create_Opportunity | Opportunity_Management/create_Opportunity_PromptCommand.json |
 | update_Opportunity | OpportunityManagementHandler | update_Opportunity | Opportunity_Management/update_Opportunity_PromptCommand.json |
 
+#### Quote Management Prompts
+| Prompt Name | Handler Class | Method Name | JSON Schema |
+|------------|---------------|-------------|-------------|
+| create_Quote | QuoteManagementHandler | create_Quote | Quote_Management/create_Quote_PromptCommand.json |
+| update_Quote | QuoteManagementHandler | update_Quote | Quote_Management/update_Quote_PromptCommand.json |
+
+#### Opportunity Line Item Prompts
+| Prompt Name | Handler Class | Method Name | JSON Schema |
+|------------|---------------|-------------|-------------|
+| create_OpportunityLineItem | OpportunityLineItemManagementHandler | create_OpportunityLineItem | OpportunityLineItem_Management/create_OpportunityLineItem_PromptCommand.json |
+| update_OpportunityLineItem | OpportunityLineItemManagementHandler | update_OpportunityLineItem | OpportunityLineItem_Management/update_OpportunityLineItem_PromptCommand.json |
+
 ### Step 3: Create AI Agent Record
 
 Create a single AI Agent record:
 - **Agent Name:** Salesforce CRM Agent
 - **Description:** Use content from `AGENT_DESCRIPTION.txt`
 - **System Prompt:** Use content from `AGENT_SYSTEM_PROMPT.txt`
-- **Link all 10 AI Prompt records** to this agent
+- **Link all 14 AI Prompt records** to this agent
+
+**System Prompt includes:** MANDATORY function-call rule (agent must invoke the function for every CRM operation; never claim success without a real response), Quick Reference for all 14 operations, and examples for each action type.
 
 ### Step 4: Test Each Operation
 
@@ -149,6 +185,14 @@ Or test manually with these natural language queries:
 - "Create $100K opportunity for Global Sparks closing next month"
 - "Move Global Sparks deal to Qualification stage"
 - "Update opportunity 'New Deal' amount to $75000"
+
+#### Quote Management Tests
+- "Create a quote for the ACME Deal"
+- "Mark the ACME quote as Accepted"
+
+#### Opportunity Line Item Tests
+- "Add Solar Panel product, quantity 10, to the Q1 Solar Deal"
+- "Update line item quantity to 15" (requires lineItemId in context)
 
 ## ✨ Key Features
 
@@ -244,7 +288,7 @@ All handlers include comprehensive debug logs:
 ### OpportunityManagementHandler
 - **Operations:** 2 (create, update)
 - **Special Features:**
-  - Stage management
+  - Stage management with picklist validation (returns valid stages on error)
   - Amount and probability tracking
   - Close date handling
   - Account linking with name or ID
@@ -252,7 +296,17 @@ All handlers include comprehensive debug logs:
 - **Lines of Code:** ~500
 - **Test Coverage:** 4 test scenarios (100% pass)
 
+### QuoteManagementHandler
+- **Operations:** 2 (create, update)
+- **Special Features:** Quote creation linked to opportunities, status and expiration updates
+
+### OpportunityLineItemManagementHandler
+- **Operations:** 2 (create, update)
+- **Special Features:** Product lookup by name, quantity/price/discount updates (update requires lineItemId)
+
 ## 🔧 Troubleshooting
+
+**See also:** [TROUBLESHOOTING_AGENTIC_OPERATIONS.md](../../docs/TROUBLESHOOTING_AGENTIC_OPERATIONS.md) for detailed guidance on "Update successful but no change", empty debug logs, invalid stage names, and wrong record updates.
 
 ### Issue: "Permission denied"
 - Check user has create/update permissions on the object
@@ -279,6 +333,11 @@ All handlers include comprehensive debug logs:
 - Check existing records before creating
 - Handlers return specific duplicate error messages
 
+### Issue: "Update successful" but no change in Salesforce / No debug logs
+- Agent may have fabricated success without calling the function. Ensure `AGENT_SYSTEM_PROMPT.txt` includes the **MANDATORY: YOU MUST CALL THE FUNCTION** section
+- Verify AI Prompt routing: correct handler class, prompt name (case-sensitive)
+- Set Debug Log level to FINEST (Setup → Debug Logs) to see handler execution
+
 ## 📝 Implementation Patterns
 
 ### Required Fields
@@ -289,6 +348,10 @@ Each operation enforces only truly required fields:
 - **update_Contact**: (contactId OR email OR firstName/lastName) + at least one field to update
 - **create_Opportunity**: name, closeDate, stageName, accountId
 - **update_Opportunity**: (opportunityId OR name) + at least one field to update
+- **create_Quote**: name, (opportunityId OR opportunityName)
+- **update_Quote**: (quoteId OR quoteNumber OR name) + at least one field to update
+- **create_OpportunityLineItem**: opportunityId or opportunityName, productName, quantity
+- **update_OpportunityLineItem**: lineItemId (REQUIRED) + at least one field to update
 
 ### Lookup-Then-Update Pattern
 All update operations follow this pattern:
@@ -360,7 +423,7 @@ Ready to deploy and use with confidence!
 
 ## 📚 Additional Resources
 
-- **System Prompt**: See `AGENT_SYSTEM_PROMPT.txt` for complete AI agent instructions
+- **System Prompt**: See `AGENT_SYSTEM_PROMPT.txt` for complete AI agent instructions (14 operations, MANDATORY function-call rule, Quick Reference, examples)
 - **Agent Description**: See `AGENT_DESCRIPTION.txt` for user-facing description
 - **Test Suite**: See `test_all_handlers_comprehensive.apex` for all test scenarios
-- **Individual Tests**: See `test_*.apex` files for focused testing examples
+- **Troubleshooting**: See [docs/TROUBLESHOOTING_AGENTIC_OPERATIONS.md](../../docs/TROUBLESHOOTING_AGENTIC_OPERATIONS.md) for "Update successful but no change", debug logs, stage validation

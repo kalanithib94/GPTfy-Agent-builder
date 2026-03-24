@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "required": [],
+  "properties": {
+    "familySize": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "ONLY the total number of people to be covered under the plan including the applicant. Extract from 'family of [value]', 'for [value] people', 'myself and [value] dependants', 'spouse and [value] kids' patterns. Example: if input is 'I need a plan for a family of four', extract 4. Default: 1 (individual) if not mentioned. This field is OPTIONAL."
+    },
+    "applicantAge": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "ONLY the age of the primary applicant in years. Extract from 'I am [value] years old', 'age [value]', '[value]-year-old' patterns. Example: if input is 'I am 35 years old looking for health cover', extract 35 only. This field is OPTIONAL — omit if not provided."
+    },
+    "hasPreExistingConditions": {
+      "type": "boolean",
+      "description": "ONLY the boolean indicating whether the applicant has pre-existing medical conditions. Extract from 'I have diabetes', 'I have hypertension', 'pre-existing condition', 'history of heart disease', 'chronic illness', 'I was diagnosed with' patterns. Example: if input is 'I have a history of diabetes, which plan covers that?', extract true. Default: false. This field is OPTIONAL."
+    },
+    "monthlyBudget": {
+      "type": "number",
+      "minimum": 0,
+      "description": "ONLY the maximum monthly premium budget the applicant is comfortable paying. Extract from 'budget of [value] per month', 'can afford [value] monthly', 'up to [value] a month' patterns. Example: if input is 'my budget is around 300 per month', extract 300 only. This field is OPTIONAL — omit if not specified."
+    },
+    "requiredCoverage": {
+      "type": "number",
+      "minimum": 0,
+      "description": "ONLY the minimum sum insured or coverage amount required by the user. Extract from 'at least [value] coverage', 'minimum [value] sum insured', 'cover of [value]' patterns. Example: if input is 'I need at least 500000 coverage', extract 500000 only. This field is OPTIONAL — omit if not mentioned."
+    }
+  }
+}

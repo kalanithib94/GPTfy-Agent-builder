@@ -1,0 +1,136 @@
+────────────────────────────────────────────────────────────────────
+INTENT ACTION FRAMEWORK — SYSTEM PROMPT INJECTION BLOCK
+────────────────────────────────────────────────────────────────────
+
+This block is automatically appended to the Agent's System Prompt
+by GPTfy at the start of each conversation when active intents
+exist on the AI Agent record.
+
+You do NOT need to add this manually to the Agent System Prompt.
+It is shown here for reference so that developers understand
+what instructions the AI model receives regarding intents.
+
+────────────────────────────────────────────────────────────────────
+INJECTED PROMPT BLOCK (auto-generated at runtime)
+────────────────────────────────────────────────────────────────────
+
+INTENT ACTION FRAMEWORK
+
+You have the following intents configured on this agent.
+Your job is to detect whether the user's message matches any intent.
+
+INTENTS:
+{{#each intents}}
+- Intent Name: {{this.name}}
+  Description: {{this.description}}
+{{/each}}
+
+MANDATORY RESPONSE FORMAT:
+You MUST always respond in the following JSON format — no exceptions:
+
+{
+  "message": "<your full conversational reply to the user>",
+  "intents": ["<matched_intent_name_1>", "<matched_intent_name_2>"],
+  "language": "<ISO 639-1 language code of the conversation>"
+}
+
+RULES:
+1. ALWAYS include all three fields: message, intents, language.
+2. "message" — Write your full conversational reply here as you normally would.
+3. "intents" — Include the Name (not description) of every intent whose
+   description matches the user's current message. If no intents match,
+   return an empty array: [].
+4. "language" — Detect the language the user is writing in and return
+   the ISO 639-1 code (e.g., "en" for English, "es" for Spanish,
+   "fr" for French, "de" for German, "ja" for Japanese).
+5. Never include intents that do NOT match the current message.
+6. An inactive intent will never appear in this list — only active
+   intents are injected into this prompt.
+7. Do not mention the Intent Action Framework to the user. Handle it silently.
+
+EXAMPLE — Message matches one intent:
+User: "I am really upset and need help"
+Response:
+{
+  "message": "I understand you are feeling upset. I am here to help you right away.",
+  "intents": ["create_support_case"],
+  "language": "en"
+}
+
+EXAMPLE — Message matches no intents:
+User: "What is the revenue for last quarter?"
+Response:
+{
+  "message": "Based on the available data, last quarter's revenue was $2.4M.",
+  "intents": [],
+  "language": "en"
+}
+
+EXAMPLE — Message matches multiple intents:
+User: "Update the account description and also log a case"
+Response:
+{
+  "message": "I will update the account description and create a case for you.",
+  "intents": ["update_account_description", "create_support_case"],
+  "language": "en"
+}
+
+────────────────────────────────────────────────────────────────────
+NOTES FOR DEVELOPERS
+────────────────────────────────────────────────────────────────────
+
+1. INTENT DESCRIPTION WRITING TIPS
+   ─────────────────────────────────
+   The Description field of AI_Agent_Intent__c is what the AI reads
+   to decide whether to trigger the intent. Write it as a clear,
+   natural-language rule.
+
+   GOOD examples:
+   - "Trigger this intent when the user expresses distress, sadness,
+     or says phrases like 'I am crying', 'I need help', or 'I am upset'."
+   - "Trigger when a user asks to update the account description or
+     mentions editing the description field."
+   - "Trigger when a user asks for an account 360 view, full account
+     summary, or complete account information."
+
+   BAD examples (too vague — will over-trigger):
+   - "When user talks about accounts"
+   - "Update something"
+
+2. INTENT NAME (HASHTAG) CONVENTION
+   ──────────────────────────────────
+   The Name field is the identifier that the AI returns in the
+   "intents" array. Use lowercase with underscores:
+   - create_support_case
+   - update_account_description
+   - account_360_view
+   - welcome_greeting
+
+3. SEQUENCE ORDERING
+   ──────────────────
+   When multiple intents match the same message, they are processed
+   in ascending Sequence order. Set Sequence intentionally to control
+   which actions run first when intents overlap.
+
+4. LANGUAGE-BASED CANNED RESPONSES
+   ───────────────────────────────────
+   The "language" field in the AI response is used to match Canned
+   Response actions. If an intent has two Canned Response actions:
+   - Language = English → "How can I help you today?"
+   - Language = Spanish → "¿Cómo puedo ayudarte hoy?"
+
+   GPTfy will serve the one matching the detected language.
+   If no match is found, the first active Canned Response is used
+   as a fallback.
+
+5. CONTEXT RECORD ID
+   ──────────────────
+   The recordId (the Salesforce record the GPTfy component is placed on)
+   is automatically passed to:
+   - Update Field actions (identifies which record to update)
+   - Create Record actions (used for parent lookups when AI Extracted)
+   - Flow actions (passed as input variable to the Flow)
+   - Apex actions (available as request.get('recordId'))
+
+   If the GPTfy component is on a global/home page (no record context),
+   recordId will be null. Design intents accordingly.

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "quoteId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "SBQQ Quote Id. Use this OR opportunityId OR name."
+    },
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "List quotes for this opportunity. Get from find_CPQ_Opportunity."
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Quote name (partial match). Returns primaryQuoteId for adding lines."
+    }
+  },
+  "additionalProperties": false
+}

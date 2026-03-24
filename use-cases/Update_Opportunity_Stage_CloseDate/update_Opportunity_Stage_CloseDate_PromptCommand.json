@@ -1,11 +1,20 @@
 {
   "type": "object",
-  "required": ["opportunityId", "stageName", "closeDate"],
+  "required": ["stageName"],
   "properties": {
     "opportunityId": {
       "type": "string",
       "maxLength": 18,
-      "description": "ONLY the Opportunity ID (Salesforce 15 or 18 character ID). Extract from 'Opportunity ID: [value]' or 'Opp: [value]' or 'ID: [value]' patterns. Example: if input is 'Update opportunity 006xx000000ABCD to Closed Won', extract '006xx000000ABCD' only. Opportunity IDs start with '006'. This field is REQUIRED."
+      "description": "ONLY the Opportunity ID (Salesforce 15 or 18 character ID). Extract from 'Opportunity ID: [value]' or 'Opp: [value]' or 'ID: [value]' patterns. Example: if input is 'Update opportunity 006xx000000ABCD to Closed Won', extract '006xx000000ABCD' only. Opportunity IDs start with '006'. This field is OPTIONAL - use if the ID is provided. If not provided, use 'name' instead."
+    },
+    "name": {
+      "type": "string",
+      "description": "ONLY the Opportunity name or partial name. Extract from 'opportunity [name]' or 'deal [name]' or 'opp [name]' patterns. Example: if input is 'Update the Acme Corp deal to Closed Won', extract 'Acme Corp' only. Partial matches are supported (e.g., 'Acme' will find 'Acme Corp Deal'). This field is OPTIONAL - use if opportunityId is not provided. At least one of 'opportunityId' or 'name' is REQUIRED."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "ONLY the Account ID for filtering the opportunity search when using 'name'. Extract from 'Account ID: [value]' or 'for account [value]' patterns. This narrows down the search when multiple opportunities have similar names. Account IDs start with '001'. This field is OPTIONAL and only used for context when searching by name."
     },
     "stageName": {
       "type": "string",
@@ -26,7 +35,7 @@
     "closeDate": {
       "type": "string",
       "format": "date",
-      "description": "ONLY the close date in YYYY-MM-DD format. Extract from 'Close Date: [value]' or 'closing on [value]' or 'push to [value]' patterns. Example: if input is 'Push close date to March 31, 2026', extract '2026-03-31' only. Must be a valid date in YYYY-MM-DD format. This field is REQUIRED."
+      "description": "ONLY the close date in YYYY-MM-DD format. Extract from 'Close Date: [value]' or 'closing on [value]' or 'push to [value]' patterns. OPTIONAL - use when user specifies a new close date. If omitted for stage-only updates (e.g. 'Move to Qualification'), the existing close date is kept."
     }
   }
 }

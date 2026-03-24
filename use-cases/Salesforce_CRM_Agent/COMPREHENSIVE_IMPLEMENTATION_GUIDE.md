@@ -1,8 +1,9 @@
 # Salesforce AI Agentic Functions - Comprehensive Implementation Guide
 
-**Version:** 1.0
-**Test Status:** ✅ 100% Pass Rate (22/22 tests)
-**Last Updated:** December 2024
+**Version:** 1.1
+**Operations:** 14 (4 find + 5 create + 5 update)
+**Test Status:** ✅ 100% Pass Rate (22/22 core tests)
+**Last Updated:** February 2025
 
 ---
 
@@ -21,24 +22,24 @@
 
 ## Executive Summary
 
-This guide documents the complete implementation of a production-ready Salesforce CRM AI Agent with **10 fully-tested operations** achieving **100% test pass rate**.
+This guide documents the complete implementation of a production-ready Salesforce CRM AI Agent with **14 operations** across 6 handler classes.
 
 ### What Was Built
 
-- **4 Handler Classes** (AccountIntelligenceHandler, CaseManagementHandler, ContactManagementHandler, OpportunityManagementHandler)
-- **10 Operations** (4 find, 6 CRUD)
-- **10 JSON Schemas** (simplified, intelligent required fields)
-- **22 Test Scenarios** (comprehensive regression testing)
-- **1 Unified System Prompt** (covers all operations with examples)
+- **6 Handler Classes** (AccountIntelligenceHandler, CaseManagementHandler, ContactManagementHandler, OpportunityManagementHandler, QuoteManagementHandler, OpportunityLineItemManagementHandler)
+- **14 Operations** (4 find + 5 create + 5 update)
+- **14 JSON Schemas** (simplified, intelligent required fields)
+- **22 Test Scenarios** (core handlers, comprehensive regression testing)
+- **1 Unified System Prompt** (covers all 14 operations with MANDATORY function-call rule, Quick Reference, and 14 examples)
 
 ### Key Metrics
 
 | Metric | Value |
 |--------|-------|
-| **Test Pass Rate** | 100% (22/22) |
-| **Total Lines of Code** | ~2,390 (across 4 handlers) |
-| **Operations Tested** | 10/10 (100%) |
-| **Edge Cases Covered** | Null safety, duplicate detection, partial matching, account filtering |
+| **Operations** | 14 (Account, Case, Contact, Opportunity, Quote, OpportunityLineItem) |
+| **Handler Classes** | 6 |
+| **Test Pass Rate** | 100% (22/22 core tests) |
+| **Edge Cases Covered** | Null safety, duplicate detection, partial matching, account filtering, stage validation |
 | **Production Ready** | ✅ Yes |
 
 ---
@@ -63,7 +64,7 @@ This guide documents the complete implementation of a production-ready Salesforc
                    │ Structured Parameters
                    │
     ┌──────────────▼──────────────┐
-    │   AI Prompt Records (10)    │
+    │   AI Prompt Records (14)    │
     │  - Operation name mapping   │
     │  - JSON schema validation   │
     │  - Handler class routing    │
@@ -72,11 +73,13 @@ This guide documents the complete implementation of a production-ready Salesforc
                    │ executeMethod(operation, params)
                    │
     ┌──────────────▼──────────────┐
-    │    Handler Classes (4)      │
+    │    Handler Classes (6)      │
     │  - AccountIntelligenceHandler│
     │  - CaseManagementHandler    │
     │  - ContactManagementHandler │
     │  - OpportunityManagementHandler│
+    │  - QuoteManagementHandler   │
+    │  - OpportunityLineItemManagementHandler│
     └──────────────┬──────────────┘
                    │
                    │ SOQL/DML
@@ -139,7 +142,48 @@ if (parameters.containsKey('field') && parameters.get('field') != null) {
 
 ---
 
-### Pattern 2: Dual-Purpose Parameter (newSubject Solution)
+### Pattern 2: MANDATORY Function Call (System Prompt)
+
+**Problem:** The LLM may generate "Update successful" without actually invoking the handler. No function call = no Apex execution = no debug logs = record not updated.
+
+**Solution:** Add explicit rules to the System Prompt:
+
+```
+## MANDATORY: YOU MUST CALL THE FUNCTION
+For ANY CRM operation (find, create, update), you MUST invoke the corresponding function/tool.
+Never respond with "success" without having: 1) Called the function, 2) Received a response, 3) Confirmed success: true.
+```
+
+- Include a Quick Reference table mapping user phrases → operations
+- Add "MUST call [operation]" for each create/update in HOW TO USE sections
+- Add examples with ✅ CORRECT / ❌ WRONG for critical operations (e.g. update_Opportunity)
+- **Never claim an update succeeded** unless the function returned success: true (applies to all update operations)
+
+**See:** `AGENT_SYSTEM_PROMPT.txt` for the full implementation.
+
+---
+
+### Pattern 3: Stage/Picklist Validation
+
+**Problem:** User says "Move to Qualification" but org has custom stage "Qualifying". DML fails or value is rejected.
+
+**Solution:** Validate against `Schema.DescribeFieldResult.getPicklistValues()` before DML. Return clear error with valid values:
+
+```apex
+private String resolveStageName(String userInput) {
+    for (String valid : getValidStageNames()) {
+        if (valid.equalsIgnoreCase(userInput)) return valid;
+    }
+    return null;
+}
+// On invalid: return buildErrorResponse("Invalid stage \"" + userInput + "\". Valid stages: " + String.join(validStages, ", "));
+```
+
+**Apply to:** Opportunity StageName, Case Status, and other picklist fields where org values may vary.
+
+---
+
+### Pattern 4: Dual-Purpose Parameter (newSubject Solution)
 
 **Problem:** When a parameter is used for BOTH lookup AND update (e.g., `subject`), the AI can't specify different values for finding vs updating.
 
@@ -189,7 +233,7 @@ User: "Update the 'call karthick' case subject to 'call K7'"
 
 ---
 
-### Pattern 3: Flexible Lookup Strategy
+### Pattern 5: Flexible Lookup Strategy
 
 **Problem:** Users may identify records in multiple ways (ID, number, name, email, etc.).
 
@@ -250,7 +294,7 @@ else if (parameters.containsKey('subject') && parameters.get('subject') != null)
 
 ---
 
-### Pattern 4: Account Context Filtering
+### Pattern 6: Account Context Filtering
 
 **Problem:** When multiple records match a search, how do you pick the right one?
 
@@ -276,7 +320,7 @@ When user is viewing an account page or mentions "this account":
 
 ---
 
-### Pattern 5: URL Generation with Null Safety
+### Pattern 7: URL Generation with Null Safety
 
 **Problem:** `URL.getOrgDomainUrl()` can return null or throw exceptions in certain org configurations.
 
@@ -301,7 +345,7 @@ if (String.isNotBlank(baseUrl)) {
 
 ---
 
-### Pattern 6: Standardized Response Format
+### Pattern 8: Standardized Response Format
 
 **Success Response:**
 ```json
@@ -346,7 +390,7 @@ private String buildErrorResponse(String errorMessage) {
 
 ---
 
-### Pattern 7: Comprehensive Debug Logging
+### Pattern 9: Comprehensive Debug Logging
 
 **Key Logging Points:**
 1. **Entry Point**: Log operation name and ALL parameters
@@ -1011,6 +1055,8 @@ For update operations, use this pattern:
 
 ### Troubleshooting Deployment Issues
 
+**For "Update successful" but no change in Salesforce / No debug logs:** See [TROUBLESHOOTING_AGENTIC_OPERATIONS.md](../../docs/TROUBLESHOOTING_AGENTIC_OPERATIONS.md) for agent fabricating success, wrong record updated, invalid stage, and debug log configuration.
+
 **Issue: "Handler class not found"**
 - Verify class is deployed with `global` visibility
 - Check class name matches exactly (case-sensitive)
@@ -1035,13 +1081,15 @@ For update operations, use this pattern:
 
 ## Appendix: Complete File Listing
 
-### Handler Classes (4 files)
+### Handler Classes (6 files)
 1. `Account_Intelligence/AccountIntelligenceHandler.apex` (~700 lines)
 2. `Case_Management/CaseManagementHandler.apex` (~500 lines)
 3. `Contact_Management/ContactManagementHandler.apex` (~690 lines)
 4. `Opportunity_Management/OpportunityManagementHandler.apex` (~500 lines)
+5. `Quote_Management/QuoteManagementHandler.apex`
+6. `OpportunityLineItem_Management/OpportunityLineItemManagementHandler.apex`
 
-### JSON Schemas (10 files)
+### JSON Schemas (14 files)
 1. `Account_Intelligence/find_Account_by_Name_PromptCommand.json`
 2. `Account_Intelligence/find_Contacts_for_Account_PromptCommand.json`
 3. `Account_Intelligence/find_Opportunities_for_Account_PromptCommand.json`
@@ -1052,10 +1100,14 @@ For update operations, use this pattern:
 8. `Contact_Management/update_Contact_PromptCommand.json`
 9. `Opportunity_Management/create_Opportunity_PromptCommand.json`
 10. `Opportunity_Management/update_Opportunity_PromptCommand.json`
+11. `Quote_Management/create_Quote_PromptCommand.json`
+12. `Quote_Management/update_Quote_PromptCommand.json`
+13. `OpportunityLineItem_Management/create_OpportunityLineItem_PromptCommand.json`
+14. `OpportunityLineItem_Management/update_OpportunityLineItem_PromptCommand.json`
 
 ### System Files (3 files)
 1. `AGENT_DESCRIPTION.txt` - User-facing agent description
-2. `AGENT_SYSTEM_PROMPT.txt` - Complete AI instructions with examples
+2. `AGENT_SYSTEM_PROMPT.txt` - Complete AI instructions (14 operations, MANDATORY function-call rule, Quick Reference, examples)
 3. `README.md` - Deployment and usage documentation
 
 ### Test Files
@@ -1072,7 +1124,9 @@ This implementation guide represents the culmination of iterative development, c
 **Key Takeaways for Other LLMs:**
 
 1. **Null Safety is Non-Negotiable**: Always use `containsKey() && get() != null`
-2. **Test Everything**: 100% pass rate requires testing all scenarios
+2. **MANDATORY Function Call**: System prompt must instruct agent to invoke the function for every CRM operation; never claim success without a real response
+3. **Validate Picklists**: Stage and status fields should validate against org picklist; return valid values on error
+4. **Test Everything**: 100% pass rate requires testing all scenarios
 3. **Dual-Purpose Parameters Need Separation**: Create "new{Field}" parameters when needed
 4. **Context Filtering is Powerful**: Use accountId to narrow searches without updating
 5. **Debug Logging Saves Time**: Comprehensive logs make troubleshooting trivial

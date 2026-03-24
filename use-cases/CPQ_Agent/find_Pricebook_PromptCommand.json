@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Optional. Filter pricebooks by name (partial match). E.g. 'Standard', 'Enterprise'."
+    },
+    "standardOnly": {
+      "type": "boolean",
+      "description": "Optional. If true, return only the standard pricebook. Use before creating quote lines to ensure correct pricebook."
+    }
+  },
+  "additionalProperties": false
+}

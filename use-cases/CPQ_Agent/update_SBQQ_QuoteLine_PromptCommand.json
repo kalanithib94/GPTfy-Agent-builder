@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["quoteLineId"],
+  "properties": {
+    "quoteLineId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "REQUIRED. SBQQ Quote Line Id to update."
+    },
+    "quantity": {
+      "type": "number",
+      "minimum": 0
+    },
+    "SBQQ__ListPrice__c": {
+      "type": "number"
+    },
+    "SBQQ__CustomerPrice__c": {
+      "type": "number"
+    },
+    "SBQQ__Number__c": {
+      "type": "integer"
+    }
+  },
+  "additionalProperties": false
+}

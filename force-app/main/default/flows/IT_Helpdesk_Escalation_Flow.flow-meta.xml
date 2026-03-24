@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>66.0</apiVersion>
+    <description>IT Helpdesk escalation flow for intent-action testing. Creates a Task and a Chatter post when escalation intent triggers.</description>
+    <label>IT Helpdesk Escalation Flow</label>
+    <processType>AutoLaunchedFlow</processType>
+    <status>Active</status>
+
+    <start>
+        <locationX>180</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Create_Helpdesk_Task</targetReference>
+        </connector>
+    </start>
+
+    <recordCreates>
+        <name>Create_Helpdesk_Task</name>
+        <label>Create Helpdesk Escalation Task</label>
+        <locationX>180</locationX>
+        <locationY>120</locationY>
+        <connector>
+            <targetReference>Create_Helpdesk_Chatter_Post</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>Subject</field>
+            <value>
+                <stringValue>IT HELPDESK FLOW TEST: Escalation Triggered</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Description</field>
+            <value>
+                <stringValue>This task was created by IT_Helpdesk_Escalation_Flow from the Intent Action Framework Flow action.</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Priority</field>
+            <value>
+                <stringValue>High</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Status</field>
+            <value>
+                <stringValue>Not Started</stringValue>
+            </value>
+        </inputAssignments>
+        <object>Task</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+
+    <recordCreates>
+        <name>Create_Helpdesk_Chatter_Post</name>
+        <label>Create Helpdesk Chatter Post</label>
+        <locationX>180</locationX>
+        <locationY>240</locationY>
+        <inputAssignments>
+            <field>Body</field>
+            <value>
+                <stringValue>IT Helpdesk escalation flow test ran successfully from Intent Action Framework.</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Type</field>
+            <value>
+                <stringValue>TextPost</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>ParentId</field>
+            <value>
+                <elementReference>$User.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <object>FeedItem</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+</Flow>

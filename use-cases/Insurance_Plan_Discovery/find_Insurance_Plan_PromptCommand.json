@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "required": [],
+  "properties": {
+    "planType": {
+      "type": "string",
+      "enum": ["Individual", "Family", "Senior", "Group Corporate"],
+      "description": "ONLY the plan type category. Extract from 'plan type: [value]', 'for a [value]', 'family plan', 'individual plan', 'senior plan' patterns. Example: if input is 'What family health plans do you offer?', extract 'Family' only. Valid values: 'Individual', 'Family', 'Senior', 'Group Corporate'. This field is OPTIONAL — omit if user does not specify a type."
+    },
+    "maxMonthlyPremium": {
+      "type": "number",
+      "minimum": 0,
+      "description": "ONLY the maximum monthly premium amount the user is willing to pay. Extract from 'budget of [value] per month', 'up to [value] monthly', 'affordable under [value]', 'less than [value] a month' patterns. Example: if input is 'I want a plan under 500 per month', extract 500 only. This field is OPTIONAL — omit if no budget is mentioned."
+    },
+    "preExistingRequired": {
+      "type": "boolean",
+      "description": "ONLY the boolean indicating whether the user needs pre-existing disease coverage. Extract from 'pre-existing', 'existing condition', 'I have diabetes / hypertension / heart condition / chronic illness / prior diagnosis' patterns. Example: if input is 'Do you have plans that cover pre-existing conditions?', extract true. Default: false if not mentioned. This field is OPTIONAL."
+    },
+    "limit": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "ONLY the maximum number of plans to return. Extract from 'show me [value] plans', 'top [value] options' patterns. Example: if input is 'show me top 5 plans', extract 5. Default: 8 if not specified. This field is OPTIONAL."
+    }
+  }
+}

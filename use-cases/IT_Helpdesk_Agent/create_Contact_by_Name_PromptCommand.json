@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "required": ["lastName"],
+  "properties": {
+    "firstName": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "Contact first name when provided. OPTIONAL."
+    },
+    "lastName": {
+      "type": "string",
+      "maxLength": 80,
+      "description": "Contact last name — REQUIRED."
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Work or personal email when mentioned. OPTIONAL."
+    },
+    "phone": {
+      "type": "string",
+      "description": "Phone number if given. OPTIONAL."
+    },
+    "description": {
+      "type": "string",
+      "description": "Notes for IT context (team, location, ticket context). OPTIONAL."
+    }
+  }
+}

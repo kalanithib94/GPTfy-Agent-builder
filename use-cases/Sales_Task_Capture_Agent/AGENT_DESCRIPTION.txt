@@ -1,0 +1,1 @@
+Creates Salesforce Tasks from chat (subject, due date, optional Account link by name or Id) and searches Accounts by name. Requires agentic function calls for every create or search — no fabricated record Ids.

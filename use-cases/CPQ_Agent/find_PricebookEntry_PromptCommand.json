@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["pricebookId"],
+  "properties": {
+    "pricebookId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "REQUIRED. Pricebook2 Id from find_Pricebook. Use this before creating SBQQ Quote Lines to get valid pricebookEntryId/productId."
+    },
+    "productName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Product name to search (partial match). Use this OR productCode. E.g. 'Solar Panel', 'License'."
+    },
+    "productCode": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Product code (exact). Use this OR productName. E.g. 'SOLAR-1', 'ENT-LIC'."
+    }
+  },
+  "additionalProperties": false
+}

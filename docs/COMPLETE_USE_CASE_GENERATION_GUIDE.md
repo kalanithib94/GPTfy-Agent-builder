@@ -3,16 +3,76 @@
 ## Purpose
 This guide teaches you EXACTLY how to generate a complete Salesforce AI Agentic Function use case. Follow every detail precisely to produce production-ready code.
 
+### Baseline reference (recommended)
+
+Use **`use-cases/Sales_Task_Capture_Agent/`** as the **golden template** and read **[docs/SALES_TASK_CAPTURE_BASELINE.md](./SALES_TASK_CAPTURE_BASELINE.md)** for:
+
+- Folder layout, automation (`Deploy-GptfyUseCasePipeline.ps1`), and **separate** AI connections for **prompts** (e.g. GPTfy OpenAI) vs **`AI_Agent__c.AI_Model__c`** (**`AI_Connection__c` with `Type__c = Agentic`**)
+- Handler patterns: JSON responses, `LoggingLevel.ERROR` diagnostics, resolving natural names in Apex, avoiding reserved-word variable names (`desc`)
+- System prompt rules that **force tool invocation** so the model does not fabricate success
+
+Copy that folder, rename artifacts, then adapt handler and schemas.
+
+For the full platform walkthrough (objects, fields, handler contract, CRUD patterns), see **[AGENTIC_ARCHITECTURE_COMPLETE_GUIDE.md](./AGENTIC_ARCHITECTURE_COMPLETE_GUIDE.md)**.
+
+---
+
+## Use case architecture (current)
+
+A complete agent in this repo has **two complementary layers** plus **scripted org setup**:
+
+| Layer | Salesforce objects | Role |
+|--------|-------------------|------|
+| **Reactive (skills / tools)** | `AI_Prompt__c` (Type = Agentic), `Prompt_Command__c` JSON, junction to `AI_Agent__c` | The LLM **chooses** a tool and passes parameters; your handler’s `executeMethod(requestParam, …)` **must** match the prompt **Name** exactly (case-sensitive). |
+| **Proactive (intents)** | `AI_Agent_Intent__c`, `AI_Intent_Action__c`, `AI_Intent_Action_Detail__c` | The platform matches conversation patterns and runs canned responses, record ops, Flow, or Apex **without** the user naming a skill. |
+
+**Runtime flow (simplified):**
+
+```
+User message
+  → AI_Agent__c (model on AI_Connection__c where Type__c = Agentic)
+  → Optional: intent match → actions (canned / DML / Flow / Apex)
+  → Optional: tool call → AI_Prompt__c → Agentic handler → JSON → model → user
+```
+
+**Two different `AI_Connection__c` roles (common source of misconfiguration):**
+
+- **Prompt connection** — Used on `AI_Prompt__c` (e.g. name like `GPTfy (OpenAI)`).
+- **Agent model** — `AI_Agent__c.AI_Model__c` usually requires a connection with **`Type__c = 'Agentic'`** (e.g. `Response API Agentic`).
+
+The PowerShell pipeline sets both; do not assume one connection satisfies both.
+
+**Implementation order:**
+
+1. Implement the Apex handler under `force-app/main/default/classes/` and deploy it to the org.
+2. Author use-case folder artifacts (`*_PromptCommand.json`, `AGENT_SYSTEM_PROMPT.txt`, etc.).
+3. Run **`scripts/Deploy-GptfyUseCasePipeline.ps1`** (creates/updates prompts, binds skills, sets agent text, optionally runs `FullConfig_AnonymousApex.apex` for intent skeleton rows).
+
+See **[SALES_TASK_CAPTURE_BASELINE.md](./SALES_TASK_CAPTURE_BASELINE.md)** for parameter tables (`-ConnectionName`, `-AgentModelConnectionName`, `-ExternalIdPrefix`, etc.).
+
 ---
 
 ## What You Will Generate
 
-When given a use case description, you will generate **EXACTLY 4 FILES** in a new folder:
+When given a use case description, you will generate **5 core files + optional automation + 3 CSV SNIPPET BLOCKS** in a new folder:
 
-1. **[HandlerClassName].apex** - Apex handler class with business logic
-2. **[promptname]_PromptCommand.json** - JSON Schema for parameter extraction
-3. **AGENT_DESCRIPTION.txt** - Brief agent description for agent record creation
-4. **AGENT_SYSTEM_PROMPT.txt** - Complete system prompt defining agent behavior
+1. **[HandlerClassName].apex** — Apex handler class with business logic (deploy under `force-app/main/default/classes/`)
+2. **[promptname]_PromptCommand.json** — JSON Schema for parameter extraction (one file per skill; **AI Prompt Name** = filename without `_PromptCommand` / trailing `Command` — see pipeline script rules)
+3. **AGENT_DESCRIPTION.txt** — Brief agent description for agent record creation
+4. **AGENT_SYSTEM_PROMPT.txt** — Complete system prompt; **require** calling agentic tools for any DML/search the handler performs (see baseline doc)
+5. **INTENTS_CONFIG.md** — All intents and actions designed for this agent
+
+**Recommended additions (see Sales Task Capture):**
+
+6. **`FullConfig_AnonymousApex.apex`** — Anonymous Apex skeleton that inserts `AI_Agent_Intent__c` / `AI_Intent_Action__c` / `AI_Intent_Action_Detail__c` for this agent (include `String targetAgentName = 'IT Helpdesk Agent';` as the placeholder the pipeline replaces, or match your pipeline’s replace rule)
+7. **`VerifyHandlerDebug_AnonymousApex.apex`** (optional) — Executes the handler for smoke tests and debug log verification
+
+**Plus, at the end of the output, provide CSV rows ready to append to:**
+- `Intent_Action_Framework/import-templates/Master_Step1_Intents.csv`
+- `Intent_Action_Framework/import-templates/Master_Step2_Intent_Actions.csv`
+- `Intent_Action_Framework/import-templates/Master_Step3_Action_Details.csv`
+
+> **Why intents matter:** Intents are the proactive layer of the agent — they detect patterns in user messages and fire automatic actions (creating records, updating fields, running flows, calling Apex) without the user explicitly asking for them. A well-designed agent always has both a reactive layer (skills/functions) and a proactive layer (intents).
 
 ---
 
@@ -43,20 +103,33 @@ Follow this pattern EXACTLY:
 
 **Rules:**
 - Use camelCase for handler class names
-- Use snake_case for prompt names
+- Use snake_case for prompt names (e.g. `create_Opportunity`, `find_Account_by_Name` – note: Object name capitalized)
 - Use PascalCase_With_Underscores for folder names
 - Operation verbs: create, find, update, delete, search, calculate
 - Always include the object name
 
+**⚠️ CRITICAL – Prompt Name Case Sensitivity:**
+- AI Prompt **Name** is **case-sensitive**. `create_Opportunity` (correct) vs `create_opportunity` (wrong) are different records.
+- Use the canonical form: `operation_Object` – e.g. `create_Opportunity`, `update_Case`, `find_Account_by_Name`.
+- **Never create duplicate prompts** with different casing (e.g. `create_opportunity` and `create_Opportunity`). The wrong one may be invoked, causing "Method is not defined" or the operation to fail silently. When an operation does not work, check for duplicate/similar prompt names and remove the incorrect one.
+
 ### STEP 3: Create Folder Structure
 
-Create folder: `use-cases/[Use_Case_Name]/`
+Create folder: `use-cases/[Use_Case_Name]/` for JSON schemas, agent text, `INTENTS_CONFIG.md`, and optional `FullConfig_AnonymousApex.apex`.
 
-Example: `use-cases/Update_Case_Status/`
+Place the **handler class** under `force-app/main/default/classes/` (Salesforce metadata), matching the pattern in **`use-cases/Sales_Task_Capture_Agent/`** + **`SalesTaskCaptureAgenticHandler.cls`**.
+
+Example: `use-cases/Update_Case_Status/` plus `force-app/main/default/classes/UpdateCaseStatusAgenticHandler.cls`
 
 ---
 
 ## FILE 1: Apex Handler Class
+
+**Physical location in this repo:** `force-app/main/default/classes/[HandlerClassName].cls` (and `.cls-meta.xml`). The `use-cases/<Agent>/` folder holds prompts, JSON schemas, and config text — not the deployed handler source for new work (mirror **Sales Task Capture**).
+
+**Diagnostics:** Use `System.debug(LoggingLevel.ERROR, 'YOUR_PREFIX | …')` for trace lines you need when org debug levels hide plain `System.debug()`. **Do not** use `desc` as an Apex local variable name (reserved context).
+
+**Optional patterns** (when the use case needs them): resolve natural names to Ids in Apex when the model may omit Ids; accept flexible dates (`today` / ISO) if documented in the Prompt Command — see the baseline handler.
 
 ### Template Structure
 
@@ -216,7 +289,9 @@ public with sharing class [HandlerClassName] implements AIAgenticInterface {
 7. **MUST check**: Object-level permissions before any operation
 8. **MUST handle**: DmlException separately from general Exception
 9. **MUST return**: Standardized JSON response format
-10. **MUST include**: Redirect URL for CREATE and UPDATE operations
+10. **MUST include**: Redirect URL for CREATE and UPDATE operations (when returning a single primary record)
+11. **SHOULD use**: `LoggingLevel.ERROR` (or similar) for operational debug prefixes when diagnosing production issues
+12. **MUST avoid**: Apex reserved/context names such as `desc` for locals
 
 ### Response Format Standards:
 
@@ -634,21 +709,228 @@ Always ensure you are providing accurate, current data from Salesforce. The data
 
 ---
 
+---
+
+## FILE 5: INTENTS_CONFIG.md
+
+This file documents every intent designed for the agent. It is the single source of truth for what gets imported into the Intent Action Framework via Data Loader or Anonymous Apex.
+
+### Why every agent needs intents
+
+Functions (skills) are triggered by explicit user commands: "update this opportunity". Intents fire automatically when the AI detects a specific pattern in the conversation — the user doesn't have to ask for the action directly. Together they make the agent both reactive and proactive.
+
+---
+
+### Step A — Intent Count and Naming Rules
+
+Design **4 to 8 intents** per agent. More is fine for complex agents (e.g. SP Energy Bot has 21). Fewer than 4 is usually a sign that the agent needs more coverage.
+
+**Naming rules:**
+
+| Agent type | Intent name format | Example |
+|------------|-------------------|---------|
+| Internal / CRM agents | `snake_case` | `deal_stalled`, `account_at_risk` |
+| Consumer-facing / chatbots | `#Keyword#` hashtag format | `#Emergency#`, `#Mental Health#` |
+| Both formats | Pick one and stay consistent within an agent | — |
+
+**Standard intents that every agent should have:**
+
+| Intent | Purpose |
+|--------|---------|
+| `[agent]_greeting` | Welcome message when user opens chat |
+| `[agent]_out_of_scope` | Graceful rejection when user asks for something outside capabilities |
+
+**Domain intents** — designed around the agent's specific capabilities (see Step B).
+
+---
+
+### Step B — Designing domain intents from the agent's system prompt
+
+Read the system prompt and ask: *"What situations can arise in a conversation with this agent that would benefit from automatic backend action?"* Common triggers:
+
+| Signal in conversation | Intent to design |
+|------------------------|-----------------|
+| User reports a bad outcome (loss, failure, crisis) | Intent to create a Case or Task |
+| User expresses frustration, urgency, or risk | Intent to escalate and create a record |
+| User reaches a milestone (deal won, case resolved) | Intent to celebrate and trigger follow-up |
+| User asks for something the agent cannot do | Intent to redirect gracefully |
+| User is confused about options, steps, or values | Intent to provide structured canned guidance |
+| User signals data needs updating (stalled, overdue, flagged) | Intent to update a field |
+| Situation involves complex multi-step backend logic | Intent to invoke a Flow or Apex class |
+
+---
+
+### Step C — Choosing action types for each intent
+
+Every intent must have **at least one Canned Response** (usually **last** in the sequence so data is committed first). Then add backend actions based on severity and complexity:
+
+| Action Type | When to use |
+|-------------|-------------|
+| **Canned Response** | Always — every intent must have one. Provides immediate, structured feedback. Set per language if multilingual. Place **last** in sequence after other actions. |
+| **Update Field** | When the conversation reveals a meaningful state change to persist on a record (e.g. at-risk flag, stalled deal). Often **first** among backend actions. |
+| **Create Record (Task)** | When the intent signals something a human team member needs to follow up on. Subject and Priority should reflect urgency. |
+| **Create Record (Case)** | When the intent signals a customer support issue that needs formal tracking and assignment. |
+| **Flow** | When multiple backend steps need to run in sequence, or when you need to notify multiple teams, create records with dependencies, or orchestrate processes too complex for a single record operation. |
+| **Apex** | When you need: a custom real-time response message, chatter posts, external system calls, conditional business logic, or anything that requires code-level intelligence rather than declarative config. |
+
+**Sequence order:** Run backend actions in a sensible dependency order, then **Canned Response last**. Recommended pattern: **Update Field** (seq 1) → **Create Record** (seq 2) → **Flow / Apex** (seq 3+) → **Canned Response** (last). That way persisted state and side effects complete before the user sees the message.
+
+---
+
+### Step D — INTENTS_CONFIG.md template
+
+```markdown
+# [Agent Name] — Intents Configuration
+
+**Agent:** [Agent Name]
+**Total Intents:** [N]
+**CSV Prefix:** [PREFIX] (e.g. CRM, OPP, CPQ, DOC, PIPE, CASE, SPE)
+
+---
+
+## Intent Design Summary
+
+| Ext_ID | Name | Seq | Action Types | Notes |
+|--------|------|-----|-------------|-------|
+| [PREFIX]-INT-001 | [intent_name] | 1 | Canned Response | Greeting |
+| [PREFIX]-INT-002 | [intent_name] | 2 | Canned Response, Create Record (Task), Update Field | At-risk signal |
+| ... | | | | |
+
+---
+
+## Intent Definitions
+
+### [PREFIX]-INT-001 — [intent_name]
+
+**Trigger description (set in GPTfy UI → Intent → Description):**
+> [Exact trigger phrases and scenarios. Be specific about the user words/patterns that should fire this intent.]
+
+**Sequence:** [N]
+**Is Active:** true
+
+#### Actions
+
+**Action 1 — Canned Response (Seq 1)**
+- Language: English
+- Text: "[Full canned response text to show user]"
+
+**Action 2 — Create Record: Task (Seq 2)**
+- Object: Task
+- Field mappings:
+  | Field | Type | Value / AI Instruction |
+  |-------|------|----------------------|
+  | Subject | Hardcoded | [Exact subject text] |
+  | Description | AI Extracted | [Instruction for AI: what to extract from conversation] |
+  | Priority | Hardcoded | High / Normal / Low |
+  | Status | Hardcoded | Not Started |
+
+**Action 3 — Update Field (Seq 3)** *(if applicable)*
+- Object: [ObjectAPIName]
+- Field: Description
+- Type: AI Extracted
+- Instruction: [What the AI should write into the field, including any prefix like STALLED: or AT-RISK:]
+
+**Action 4 — Flow (Seq 4)** *(if applicable)*
+- Flow API Name: [FlowAPIName]
+- Purpose: [What the flow does]
+
+**Action 5 — Apex (Seq 5)** *(if applicable)*
+- Apex Class Name: [ClassName]
+- Return Type: Replace Message / Append to Message
+- Class location: `force-app/main/default/classes/[ClassName].cls`
+- Purpose: [What the class does]
+
+---
+
+[Repeat for each intent]
+
+---
+
+## Apex Classes Required
+
+| Class Name | Intent(s) | Purpose |
+|------------|-----------|---------|
+| [ClassName] | [INT-00N] | [What it does] |
+
+## Flows Required
+
+| Flow API Name | Intent(s) | Purpose |
+|---------------|-----------|---------|
+| [FlowAPIName] | [INT-00N] | [What it does] |
+```
+
+---
+
+### Step E — Generating the 3 CSV snippet blocks
+
+After writing INTENTS_CONFIG.md, produce three clearly labelled CSV snippet blocks. These rows are appended to the master files in `Intent_Action_Framework/import-templates/`.
+
+#### Block 1 — Append to `Master_Step1_Intents.csv`
+
+Use this column order (no header row in the snippet — the file already has one):
+```
+Ext_ID,Name,ccai_qa__AI_Agent__r:Name,_Sequence,_Is_Active,_Description
+```
+
+One row per intent. The `_Description` value is the trigger description — copy it exactly from the INTENTS_CONFIG.md intent definition.
+
+#### Block 2 — Append to `Master_Step2_Intent_Actions.csv`
+
+Use this column order:
+```
+Ext_ID,Intent_Ext_ID,ccai_qa__AI_Agent_Intent__r:Name,_Seq,_Action_Type,_Language,_Canned_Response_Text,_Object_API_Name,_Flow_API_Name,_Apex_Class_Name,_Apex_Return_Type
+```
+
+One row per action per intent. Leave empty cells for columns not applicable to the action type.
+
+#### Block 3 — Append to `Master_Step3_Action_Details.csv`
+
+Use this column order:
+```
+Ext_ID,Action_Ext_ID,ccai_qa__AI_Intent_Action__c,ccai_qa__Field_API_Name__c,ccai_qa__Type__c,_Hardcoded_Value_Or_AI_Instruction
+```
+
+One row per field mapping. The `ccai_qa__AI_Intent_Action__c` column is always blank — it is filled after Data Loader Step 2 export.
+
+---
+
+### Step F — Ext_ID prefix convention
+
+Derive a short 2–6 letter prefix from the agent name:
+
+| Agent name | Prefix | Example Ext_IDs |
+|------------|--------|----------------|
+| Salesforce CRM Agent | CRM | CRM-INT-001, CRM-INT-001-ACT-001 |
+| Update Opportunity Stage CloseDate | OPP | OPP-INT-001 |
+| CPQ Agent | CPQ | CPQ-INT-001 |
+| Document Intelligence Agent | DOC | DOC-INT-001 |
+| Find Opportunity by Probability | PIPE | PIPE-INT-001 |
+| Update Case Status | CASE | CASE-INT-001 |
+| SP Energy Bot | SPE | SPE-INT-001 |
+| [New agent] | [3-4 letters from name] | [PREFIX]-INT-001 |
+
+Action Ext_IDs extend the intent Ext_ID: `CRM-INT-002-ACT-003`
+Detail Ext_IDs extend the action Ext_ID: `CRM-INT-002-ACT-003-DTL-002`
+
+---
+
 ## Quality Checklist
 
 Before outputting files, verify:
 
 ### Apex Handler Class:
+- ✅ Lives under `force-app/main/default/classes/` (deployable metadata), not only in `use-cases/`
 - ✅ Uses `public with sharing class`
 - ✅ Implements `AIAgenticInterface`
 - ✅ Has `hasObjectPerm()` method
 - ✅ Has two `errorResponse()` methods
-- ✅ Has `executeMethod()` with switch statement
+- ✅ Has `executeMethod()` with switch statement (`requestParam` matches **AI Prompt Name** exactly)
 - ✅ Validates all required parameters
 - ✅ Checks object-level permissions
 - ✅ Handles DmlException separately
 - ✅ Returns standardized JSON response
-- ✅ Includes redirect URL (for CREATE/UPDATE)
+- ✅ Includes redirect URL (for CREATE/UPDATE) when applicable
+- ✅ Uses identifiable `LoggingLevel.ERROR` (or equivalent) debug lines for support; avoids `desc` as a variable name
 
 ### JSON Schema:
 - ✅ All required fields in `required` array
@@ -675,6 +957,26 @@ Before outputting files, verify:
 - ✅ Lists limitations clearly
 - ✅ For UPDATE/CREATE: Emphasizes NOT to fake responses
 - ✅ For READ: Includes data presentation format
+
+### INTENTS_CONFIG.md:
+- ✅ Has a greeting intent
+- ✅ Has an out-of-scope / redirect intent
+- ✅ Has 4–8+ domain intents reflecting the agent's actual capabilities
+- ✅ Every intent has at least one Canned Response action
+- ✅ Backend actions (Create Record, Update Field, Flow, Apex) are included where appropriate
+- ✅ All 5 action types are used at least once across the full intent set (where scenarios justify them)
+- ✅ Apex intents have a corresponding `.cls` file path documented
+- ✅ Flow intents have a Flow API name documented
+- ✅ Trigger descriptions are specific enough to reliably fire (not too broad, not too narrow)
+- ✅ Sequence numbers are assigned (Update Field → Create Record → Flow/Apex as needed, **Canned Response last**)
+- ✅ Field mappings for Create Record / Update Field intents list all fields with correct Type
+
+### CSV Snippet Blocks:
+- ✅ Block 1 (Step 1) has one row per intent with correct Ext_ID prefix
+- ✅ Block 2 (Step 2) has one row per action with `ccai_qa__AI_Agent_Intent__r:Name` matching the intent Name
+- ✅ Block 3 (Step 3) has one row per field mapping; `ccai_qa__AI_Intent_Action__c` column left blank
+- ✅ All `_NOTE_` / underscore columns are present and populated with config instructions
+- ✅ No header row included in the snippet (master files already have headers)
 
 ---
 
@@ -1127,10 +1429,14 @@ When validating IDs, use these common prefixes:
 **Folder:** `use-cases/Update_Case_Status/`
 
 **Files:**
-1. `UpdateCaseStatusAgenticHandler.apex` (175 lines)
-2. `update_Case_Status_PromptCommand.json` (30 lines)
-3. `AGENT_DESCRIPTION.txt` (3 sentences)
-4. `AGENT_SYSTEM_PROMPT.txt` (70 lines)
+1. `force-app/main/default/classes/UpdateCaseStatusAgenticHandler.cls` — handler (deploy first)
+2. `use-cases/Update_Case_Status/update_Case_Status_PromptCommand.json` (30 lines)
+3. `use-cases/Update_Case_Status/AGENT_DESCRIPTION.txt` (3 sentences)
+4. `use-cases/Update_Case_Status/AGENT_SYSTEM_PROMPT.txt` (70 lines)
+5. `use-cases/Update_Case_Status/INTENTS_CONFIG.md`
+6. *(Recommended)* `use-cases/Update_Case_Status/FullConfig_AnonymousApex.apex` — intent skeleton for pipeline
+7. *(Optional)* `use-cases/Update_Case_Status/VerifyHandlerDebug_AnonymousApex.apex`
+8. Three **CSV snippet blocks** for `Intent_Action_Framework/import-templates/Master_Step*.csv`
 
 **Naming:**
 - Prompt Name: `update_Case_Status`
@@ -1158,31 +1464,42 @@ When validating IDs, use these common prefixes:
 
 When you receive a use case:
 
-1. **Analyze** the requirements carefully
+1. **Analyze** the requirements carefully — what is the agent's domain, objects, operations, and audience?
 2. **Extract** operation type, object, required/optional parameters
-3. **Apply naming conventions** exactly as specified
-4. **Generate all 4 files** with complete implementation
-5. **Validate** against the quality checklist
-6. **Output** files in a clear, organized format
+3. **Apply naming conventions** exactly as specified (folder, handler, prompt name, Ext_ID prefix)
+4. **Generate the core artifacts**: handler (metadata path), one `*_PromptCommand.json` per skill, `AGENT_DESCRIPTION.txt`, `AGENT_SYSTEM_PROMPT.txt`, `INTENTS_CONFIG.md`
+5. **Add** `FullConfig_AnonymousApex.apex` when intents should be bootstrapped by the pipeline (recommended); optional verify Anonymous Apex for smoke tests
+6. **Design intents** by reading the system prompt and asking: *"What conversation patterns should automatically trigger backend actions?"*
+7. **Choose action types** deliberately — at least one Canned Response per intent; add Update Field, Create Record, Flow, or Apex where warranted (**never** `Invoke Agent`)
+8. **Generate 3 CSV snippet blocks** ready to append to the master import templates (alternative to UI-only completion — see **[INTENT_ACTION_FRAMEWORK_GUIDE.md](./INTENT_ACTION_FRAMEWORK_GUIDE.md)**)
+9. **Validate** against the quality checklist
+10. **Document deployment**: deploy handler → run `Deploy-GptfyUseCasePipeline.ps1` with matching `-HandlerClass`, `-ExternalIdPrefix`, `-FullConfigPath` (see baseline)
+11. **Output** files in a clear, organized format
 
 Do NOT:
-- Skip any sections
+- Skip any sections or files
 - Use placeholder comments like "// Add logic here"
 - Generate incomplete code
 - Forget error handling
 - Omit examples in system prompt
 - Use HTML tags in system prompt
+- Design intents that are too generic (e.g. "user says something bad") — be specific about trigger phrases
+- Design all intents with only Canned Response — use backend action types where appropriate
+- Use `Invoke Agent` action type — it is not implemented; only use the 5 types: Canned Response, Update Field, Create Record, Flow, Apex
 
 DO:
 - Follow every pattern exactly
 - Include all validation
 - Write production-ready code
-- Be specific in all descriptions
-- Provide concrete examples
+- Be specific in all intent trigger descriptions
+- Use all 5 action types across the intent set (where scenarios justify them)
+- Provide concrete examples in system prompt
 - Think through edge cases
+- Produce CSV rows that are copy-paste ready to append to master files
 
 ---
 
-**Created**: December 18, 2025
-**Version**: 1.0
-**Purpose**: Complete guide for LLMs to generate Salesforce AI Agentic Function use cases
+**Created**: December 18, 2025  
+**Updated**: March 25, 2026  
+**Version**: 2.1  
+**Purpose**: Complete guide for LLMs to generate Salesforce AI Agentic Function use cases aligned with **reactive skills + proactive intents**, **`Deploy-GptfyUseCasePipeline.ps1`**, separate prompt vs Agentic model connections, and Intent Action Framework CSV/import paths.

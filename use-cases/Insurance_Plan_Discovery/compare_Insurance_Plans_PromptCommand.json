@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "required": ["planNames"],
+  "properties": {
+    "planNames": {
+      "type": "string",
+      "description": "ONLY the comma-separated list of plan names the user wants to compare. Extract from 'compare [Plan A] and [Plan B]', 'difference between [Plan A] vs [Plan B]', '[Plan A], [Plan B] and [Plan C] comparison' patterns. Example: if input is 'Can you compare Silver Shield and Gold Care?', extract 'Silver Shield, Gold Care' only. Minimum 2 plans required, maximum 4. This field is REQUIRED."
+    }
+  }
+}

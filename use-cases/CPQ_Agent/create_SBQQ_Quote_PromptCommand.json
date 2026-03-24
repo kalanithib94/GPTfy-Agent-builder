@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "REQUIRED. Quote name (also used as opportunity name when creating opportunity automatically). E.g. 'Q1 2026 Proposal'."
+    },
+    "opportunityId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Existing Opportunity Id. Use this OR opportunityName when linking to an existing opportunity. Otherwise use accountId/accountName to create quote and have the system find pricebook and create opportunity automatically."
+    },
+    "opportunityName": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Existing opportunity name. Use this OR opportunityId. If not provided, use accountId/accountName to auto-create opportunity with pricebook."
+    },
+    "accountId": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Account Id when creating a new opportunity automatically. System will find pricebook, create opportunity with this account and pricebook, then create quote. Use accountId OR accountName."
+    },
+    "accountName": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Account name when creating a new opportunity automatically. System finds pricebook, creates opportunity, then creates quote."
+    },
+    "closeDate": {
+      "type": "string",
+      "description": "Close date for auto-created opportunity (YYYY-MM-DD). Default: 3 months from today."
+    },
+    "stageName": {
+      "type": "string",
+      "description": "Stage for auto-created opportunity. Default: Prospecting."
+    },
+    "amount": {
+      "type": "number",
+      "description": "Amount for auto-created opportunity."
+    },
+    "description": {
+      "type": "string",
+      "description": "Description for auto-created opportunity."
+    },
+    "SBQQ__Primary__c": {
+      "type": "boolean",
+      "description": "Mark as primary quote for the opportunity."
+    },
+    "SBQQ__Status__c": {
+      "type": "string",
+      "description": "Quote status (e.g. Draft, Approved)."
+    },
+    "SBQQ__ExpirationDate__c": {
+      "type": "string",
+      "description": "Expiration date YYYY-MM-DD."
+    },
+    "SBQQ__PriceBook__c": {
+      "type": "string",
+      "maxLength": 18,
+      "description": "Override pricebook (otherwise uses standard/active when auto-creating opportunity)."
+    }
+  },
+  "additionalProperties": false
+}

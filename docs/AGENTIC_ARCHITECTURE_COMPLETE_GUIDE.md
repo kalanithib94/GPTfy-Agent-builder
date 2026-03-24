@@ -1,5 +1,13 @@
 # Salesforce AI Agentic Function Architecture - Complete Guide for LLMs
 
+## Reference implementation in this repo
+
+The **Sales Task Capture Agent** (`use-cases/Sales_Task_Capture_Agent/`) is the **baseline** example: handler + per-skill `*_PromptCommand.json`, mandatory tool-use system prompt, optional name resolution and flexible dates in Apex, and scripted org setup. Read **[SALES_TASK_CAPTURE_BASELINE.md](./SALES_TASK_CAPTURE_BASELINE.md)** for the full checklist and **`scripts/Deploy-GptfyUseCasePipeline.ps1`** for automation.
+
+Object API names in examples may show a namespace prefix (e.g. `ccai_qa__AI_Prompt__c`). Your org might use **unprefixed** `AI_Prompt__c` / `AI_Agent__c` — the concepts are the same.
+
+---
+
 ## 📋 Table of Contents
 1. [Architecture Overview](#architecture-overview)
 2. [Core Components](#core-components)
@@ -1118,6 +1126,12 @@ System.debug(result);
 | Handler Class | `OperationObjectAgenticHandler` | `CreateAccountAgenticHandler` |
 | Handler Method | `operationObject` | `createAccount` |
 | Request Param | Same as AI Prompt Name | `create_Account_by_Name` |
+
+**⚠️ CRITICAL – AI Prompt Name Case Sensitivity and Duplicates:**
+- AI Prompt **Name** is **case-sensitive**. `create_Opportunity` and `create_opportunity` are **different** prompts.
+- The handler's `executeMethod` switch must match the prompt name **exactly** (including casing). Use the canonical form: `operation_Object` (e.g. `create_Opportunity`, `find_Account_by_Name`).
+- **Never create duplicate prompts** with the same logical name but different casing (e.g. `create_opportunity` vs `create_Opportunity`). The platform may pick the wrong one, routing to a handler that doesn't support that operation and causing "Method is not defined" or silent failures.
+- When troubleshooting "Method is not defined" or operations that don't trigger the expected handler: **search for duplicate or similarly named AI Prompt records** and remove/rename any that use incorrect casing.
 
 ### **2. Security First**
 
