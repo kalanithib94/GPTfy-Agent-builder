@@ -10,6 +10,9 @@ type SessionInfo = {
   instanceUrl?: string;
   gptfyNamespace?: string | null;
   openaiConfigured: boolean;
+  openaiKeyHint?: string | null;
+  openaiSource?: "env" | "redis" | "none";
+  openaiModel?: string;
 };
 
 type DeployOutcome = {
@@ -218,20 +221,18 @@ export default function GeneratePage() {
     : null;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-10 lg:space-y-12">
       <div>
-        <h1 className="text-2xl font-bold text-white mb-2">Agent generator</h1>
-        <p className="text-[var(--muted)] text-sm max-w-2xl">
-          Enter your use case and connect Salesforce. Use{" "}
-          <strong className="text-white">Publish to org</strong> to generate and deploy in
-          one step: Apex (Metadata API), active prompts, agent model binding, skill
-          junctions, published agent, and starter intents/actions in the same org.
-          Optional fields below default for pipeline parity with your repo script.
+        <p className="mb-1 text-xs font-medium uppercase tracking-wider text-cyan-400/80">Generate</p>
+        <h1 className="text-2xl font-bold text-white sm:text-3xl">Use case → artifacts</h1>
+        <p className="mt-2 max-w-3xl text-[var(--muted)]">
+          Connect Salesforce, describe the agent, then preview or use{" "}
+          <strong className="text-white">Publish to org</strong> for a full pipeline deploy.
         </p>
       </div>
 
       {/* Session strip */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 flex flex-wrap gap-4 items-center justify-between text-sm">
+      <div className="card flex flex-wrap gap-6 items-center justify-between text-sm">
         <div className="space-y-1">
           <div className="text-[var(--muted)]">Salesforce</div>
           {session?.connected ? (
@@ -254,22 +255,34 @@ export default function GeneratePage() {
         <div className="space-y-1">
           <div className="text-[var(--muted)]">AI generation</div>
           <div className={session?.openaiConfigured ? "text-[var(--ok)]" : "text-amber-200"}>
-            {session?.openaiConfigured
-              ? "OpenAI configured (server)"
-              : "Template mode — add OPENAI_API_KEY on Vercel"}
+            {session?.openaiConfigured ? (
+              <>
+                OpenAI ready ({session.openaiSource ?? "server"}
+                {session.openaiKeyHint ? ` · ${session.openaiKeyHint}` : ""}
+                {session.openaiModel ? ` · ${session.openaiModel}` : ""})
+              </>
+            ) : (
+              <>
+                Template mode — set a shared key in Vercel (
+                <code className="text-neutral-400">OPENAI_API_KEY</code>) or{" "}
+                <Link href="/admin" className="underline text-[var(--accent)]">
+                  OpenAI setup
+                </Link>
+              </>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
           <Link
             href="/status"
-            className="rounded-md border border-[var(--border)] px-3 py-1.5 text-white hover:bg-white/5"
+            className="rounded-lg border border-[var(--border)] bg-black/20 px-3 py-1.5 text-white hover:bg-white/5"
           >
-            Connection check
+            Org check
           </Link>
         </div>
       </div>
 
-      <form onSubmit={submit} className="space-y-6 max-w-2xl">
+      <form onSubmit={submit} className="space-y-6">
         <div>
           <label className="block text-sm font-medium text-[var(--muted)] mb-1">
             Use case <span className="text-red-400">*</span>
@@ -285,7 +298,7 @@ export default function GeneratePage() {
           />
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Field
             label="Agent name"
             value={agentName}
@@ -326,7 +339,7 @@ export default function GeneratePage() {
             label="Data extraction mapping"
             value={dataMappingName}
             onChange={setDataMappingName}
-            className="sm:col-span-2"
+            className="sm:col-span-2 xl:col-span-3"
             placeholder="Prepackaged - Case"
           />
         </div>
@@ -421,7 +434,7 @@ export default function GeneratePage() {
       ) : null}
 
       {bundle ? (
-        <div className="space-y-4 border-t border-[var(--border)] pt-10">
+        <div className="space-y-6 border-t border-[var(--border)] pt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-semibold text-white">Output</h2>
             <div className="flex flex-wrap gap-2">
@@ -486,7 +499,7 @@ function renderTab(
       >
         {copied === id ? "Copied" : "Copy"}
       </button>
-      <pre className="rounded-lg border border-[var(--border)] bg-black/50 p-4 pt-10 text-sm text-gray-200 overflow-x-auto whitespace-pre-wrap font-mono max-h-[min(70vh,560px)] overflow-y-auto">
+      <pre className="rounded-xl border border-[var(--border)] bg-black/40 p-4 pt-10 text-sm text-gray-200 overflow-x-auto whitespace-pre-wrap font-mono max-h-[min(75vh,640px)] overflow-y-auto">
         {content}
       </pre>
     </div>

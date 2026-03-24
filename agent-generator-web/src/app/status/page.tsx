@@ -62,17 +62,23 @@ export default function StatusPage() {
   }
 
   if (loading) {
-    return <p className="text-[var(--muted)]">Checking org…</p>;
+    return (
+      <p className="text-sm text-neutral-500">
+        Loading…
+      </p>
+    );
   }
 
   if (error === "not_connected") {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-white">Connection check</h1>
-        <p className="text-[var(--muted)]">
-          No active Salesforce session.{" "}
-          <Link href="/connect" className="text-[var(--accent)] hover:underline">
-            Connect your org
+      <div className="max-w-xl space-y-4">
+        <div>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-violet-400/80">Org</p>
+          <h1 className="text-2xl font-bold text-white">Connection check</h1>
+        </div>
+        <p className="text-neutral-400">
+          <Link href="/connect" className="text-cyan-300 hover:underline">
+            Connect Salesforce
           </Link>{" "}
           first.
         </p>
@@ -82,144 +88,83 @@ export default function StatusPage() {
 
   if (error && error !== "not_connected") {
     return (
-      <div className="space-y-4">
+      <div className="max-w-xl space-y-4">
         <h1 className="text-2xl font-bold text-white">Connection check</h1>
-        <p className="text-red-200 text-sm">{error}</p>
-        <button
-          type="button"
-          onClick={() => load()}
-          className="rounded-md border border-[var(--border)] px-4 py-2 text-sm text-white"
-        >
+        <p className="text-red-300 text-sm">{error}</p>
+        <button type="button" onClick={() => load()} className="btn btn-primary text-sm">
           Retry
         </button>
       </div>
     );
   }
 
-  if (!data) {
-    return null;
-  }
+  if (!data) return null;
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-2">Connection check</h1>
-          <p className="text-[var(--muted)] text-sm max-w-xl">
-            Validates REST describe access for GPTfy-related objects. Namespace is
-            auto-detected: packaged orgs usually use{" "}
-            <code className="text-cyan-400">ccai__</code> or{" "}
-            <code className="text-cyan-400">ccai_qa__</code>; unpackaged dev orgs often
-            have no prefix.
-          </p>
+          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-violet-400/80">Org</p>
+          <h1 className="text-2xl font-bold text-white sm:text-3xl">GPTfy metadata</h1>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => load()}
-            className="rounded-md border border-[var(--border)] px-4 py-2 text-sm text-white hover:bg-[var(--surface)]"
-          >
-            Re-run check
+          <button type="button" onClick={() => load()} className="btn text-sm">
+            Refresh
           </button>
-          <button
-            type="button"
-            onClick={() => logout()}
-            className="rounded-md border border-red-900/60 px-4 py-2 text-sm text-red-200 hover:bg-red-950/40"
-          >
-            Disconnect
+          <button type="button" onClick={() => logout()} className="btn text-sm">
+            Log out
           </button>
         </div>
       </div>
 
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 space-y-2 text-sm">
-        <div className="grid gap-1">
-          <span className="text-[var(--muted)]">Instance</span>
-          <span className="text-white break-all">{data.instanceUrl}</span>
-        </div>
-        {data.username ? (
-          <div className="grid gap-1">
-            <span className="text-[var(--muted)]">User</span>
-            <span className="text-white">{data.username}</span>
-          </div>
-        ) : null}
-        {data.orgId ? (
-          <div className="grid gap-1">
-            <span className="text-[var(--muted)]">Organization ID</span>
-            <span className="font-mono text-white">{data.orgId}</span>
-          </div>
-        ) : null}
-        <div className="grid gap-1 pt-2 border-t border-[var(--border)]">
-          <span className="text-[var(--muted)]">Namespace detection</span>
-          <span className="text-white">
-            {data.detectedNamespace === null || data.detectedNamespace === undefined
-              ? "—"
-              : data.detectedNamespace === ""
-                ? "(none — unprefixed)"
-                : data.detectedNamespace}
-          </span>
-          {data.namespaceHelp ? (
-            <span className="text-[var(--muted)]">{data.namespaceHelp}</span>
-          ) : null}
+      <div className="card-muted text-sm text-neutral-300 space-y-1">
+        <div className="break-all text-cyan-200/80">{data.instanceUrl}</div>
+        {data.username ? <div>{data.username}</div> : null}
+        {data.orgId ? <div className="font-mono text-xs text-neutral-500">{data.orgId}</div> : null}
+        <div>
+          Namespace:{" "}
+          {data.detectedNamespace === "" || data.detectedNamespace == null
+            ? data.detectedNamespace === ""
+              ? "(none)"
+              : "—"
+            : data.detectedNamespace}
         </div>
       </div>
 
-      <div
-        className={`rounded-md px-4 py-3 text-sm font-medium ${
-          data.summary.allOk
-            ? "bg-emerald-950/50 text-emerald-200 border border-emerald-800/60"
-            : "bg-amber-950/40 text-amber-100 border border-amber-800/50"
-        }`}
-      >
+      <p className={`text-sm font-medium ${data.summary.allOk ? "text-emerald-400" : "text-amber-200"}`}>
         {data.summary.allOk
-          ? "All checked objects and required fields are present."
-          : `Some checks failed (${data.summary.okCount}/${data.summary.total} OK). Install or upgrade the GPTfy package, or fix field-level security / API names.`}
-      </div>
+          ? "All checks passed."
+          : `${data.summary.okCount}/${data.summary.total} OK`}
+      </p>
 
-      <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-black/20">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
-            <tr className="bg-[var(--surface)] text-left text-[var(--muted)]">
-              <th className="p-3 font-medium">Object</th>
-              <th className="p-3 font-medium">API name (resolved)</th>
-              <th className="p-3 font-medium">Status</th>
-              <th className="p-3 font-medium">Details</th>
+            <tr className="border-b border-[var(--border)] bg-white/[0.03] text-left text-xs uppercase tracking-wide text-neutral-500">
+              <th className="px-4 py-3 font-medium">Object</th>
+              <th className="px-4 py-3 font-medium">API name</th>
+              <th className="px-4 py-3 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
             {data.items.map((row) => (
-              <tr
-                key={row.objectLocalName}
-                className="border-t border-[var(--border)]"
-              >
-                <td className="p-3 font-mono text-cyan-400">{row.objectLocalName}</td>
-                <td className="p-3 font-mono text-white text-xs break-all">
+              <tr key={row.objectLocalName} className="border-t border-[var(--border)] hover:bg-white/[0.02]">
+                <td className="px-4 py-2.5 font-mono text-neutral-200">{row.objectLocalName}</td>
+                <td className="px-4 py-2.5 font-mono text-xs text-neutral-500 break-all max-w-md">
                   {row.apiName ?? "—"}
                 </td>
-                <td className="p-3">
+                <td className="px-4 py-2.5">
                   <span
                     className={
                       row.status === "ok"
-                        ? "text-[var(--ok)]"
+                        ? "text-emerald-400"
                         : row.status === "missing"
-                          ? "text-[var(--warn)]"
-                          : "text-[var(--err)]"
+                          ? "text-amber-200"
+                          : "text-red-300"
                     }
                   >
                     {row.status}
                   </span>
-                </td>
-                <td className="p-3 text-[var(--muted)]">
-                  {row.namespaceNote ? (
-                    <span className="block text-xs mb-1">{row.namespaceNote}</span>
-                  ) : null}
-                  {row.message ?? ""}
-                  {row.missingFields?.length ? (
-                    <ul className="list-disc list-inside text-xs mt-1 text-amber-200/90">
-                      {row.missingFields.map((f) => (
-                        <li key={f}>{f}</li>
-                      ))}
-                    </ul>
-                  ) : null}
                 </td>
               </tr>
             ))}
@@ -227,13 +172,9 @@ export default function StatusPage() {
         </table>
       </div>
 
-      <p className="text-sm text-[var(--muted)]">
-        Continue to the{" "}
-        <Link href="/generate" className="text-[var(--accent)] hover:underline">
-          Generator
-        </Link>{" "}
-        after the org looks correct.
-      </p>
+      <Link href="/generate" className="inline-flex text-sm font-medium text-cyan-300 hover:underline">
+        → Generate
+      </Link>
     </div>
   );
 }

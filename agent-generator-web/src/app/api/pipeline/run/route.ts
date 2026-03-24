@@ -8,6 +8,7 @@ import {
 import { defaultIntentDeployPlan } from "@/lib/intent-deploy-types";
 import { runGptfyOrgValidation } from "@/lib/gptfy-metadata";
 import { deployBundleToConnectedOrg } from "@/lib/sf-deploy-pipeline";
+import { getOpenAIApiKey } from "@/lib/openai-server-config";
 import { getSfSession } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -41,15 +42,15 @@ export async function POST(request: Request) {
 
   const p = parsed.data;
   const params = resolveGenerateParams(p);
-  const useTemplate =
-    p.useTemplateOnly === true || !process.env.OPENAI_API_KEY?.trim();
+  const openaiKey = await getOpenAIApiKey();
+  const useTemplate = p.useTemplateOnly === true || !openaiKey;
 
   const warnings: string[] = [];
   let bundle;
 
   if (!useTemplate) {
     const ai = await generateWithOpenAI(
-      process.env.OPENAI_API_KEY!,
+      openaiKey!,
       params,
       p.useCase,
       p.notes,
@@ -65,8 +66,8 @@ export async function POST(request: Request) {
       bundle = buildTemplateBundle(params, p.useCase, p.notes);
     }
   } else {
-    if (!p.useTemplateOnly && !process.env.OPENAI_API_KEY?.trim()) {
-      warnings.push("OPENAI_API_KEY not set — template bundle.");
+    if (!p.useTemplateOnly && !openaiKey) {
+      warnings.push("No OpenAI API key on server — template bundle.");
     }
     bundle = buildTemplateBundle(params, p.useCase, p.notes);
   }
@@ -102,6 +103,6 @@ export async function POST(request: Request) {
     bundle,
     warnings,
     deploy,
-    openaiConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    openaiConfigured: Boolean(openaiKey),
   });
 }

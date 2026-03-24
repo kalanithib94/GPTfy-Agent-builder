@@ -76,24 +76,43 @@ fullConfigStubApex: optional Apex snippet as string with String targetAgentName 
     agentDeveloperName: params.agentDeveloperName,
   });
 
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+  const bodyPayload = JSON.stringify({
+    model,
+    response_format: { type: "json_object" },
+    temperature: 0.2,
+    max_tokens: 16000,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+
+  const callOnce = async (): Promise<Response> => {
+    const controller = new AbortController();
+    const timeoutMs = 120_000;
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(OPENAI_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: bodyPayload,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
   try {
-    const res = await fetch(OPENAI_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-        max_tokens: 16000,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-    });
+    let res = await callOnce();
+    if (res.status === 429) {
+      await new Promise((r) => setTimeout(r, 2500));
+      res = await callOnce();
+    }
 
     const raw = await res.text();
     if (!res.ok) {
@@ -153,6 +172,13 @@ fullConfigStubApex: optional Apex snippet as string with String targetAgentName 
 
     return { ok: true, bundle };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    const msg = (e as Error).message;
+    if (msg === "The operation was aborted." || msg.includes("aborted")) {
+      return {
+        ok: false,
+        error: "OpenAI request timed out (120s). Try again or shorten the use case.",
+      };
+    }
+    return { ok: false, error: msg };
   }
 }

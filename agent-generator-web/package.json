@@ -6,9 +6,11 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "deploy:vercel": "vercel --prod --yes"
   },
   "dependencies": {
+    "@upstash/redis": "^1.37.0",
     "iron-session": "^8.0.4",
     "jsforce": "^3.4.1",
     "jszip": "^3.10.1",

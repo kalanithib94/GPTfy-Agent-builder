@@ -6,6 +6,7 @@ import {
   resolveGenerateParams,
 } from "@/lib/generation-types";
 import { defaultIntentDeployPlan } from "@/lib/intent-deploy-types";
+import { getOpenAIApiKey } from "@/lib/openai-server-config";
 import { getSfSession } from "@/lib/session";
 
 export async function POST(request: Request) {
@@ -34,15 +35,15 @@ export async function POST(request: Request) {
 
   const p = parsed.data;
   const params = resolveGenerateParams(p);
-  const useTemplate =
-    p.useTemplateOnly === true || !process.env.OPENAI_API_KEY?.trim();
+  const openaiKey = await getOpenAIApiKey();
+  const useTemplate = p.useTemplateOnly === true || !openaiKey;
 
   let bundle;
   let warnings: string[] = [];
 
   if (!useTemplate) {
     const ai = await generateWithOpenAI(
-      process.env.OPENAI_API_KEY!,
+      openaiKey!,
       params,
       p.useCase,
       p.notes,
@@ -58,9 +59,9 @@ export async function POST(request: Request) {
       bundle = buildTemplateBundle(params, p.useCase, p.notes);
     }
   } else {
-    if (!p.useTemplateOnly && !process.env.OPENAI_API_KEY?.trim()) {
+    if (!p.useTemplateOnly && !openaiKey) {
       warnings.push(
-        "OPENAI_API_KEY is not set — using built-in template (add key on Vercel for AI-generated code)."
+        "No OpenAI API key on the server — using built-in template. Set OPENAI_API_KEY on Vercel or save a key in /admin (Redis)."
       );
     }
     bundle = buildTemplateBundle(params, p.useCase, p.notes);
@@ -76,6 +77,6 @@ export async function POST(request: Request) {
   return NextResponse.json({
     bundle,
     warnings,
-    openaiConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    openaiConfigured: Boolean(openaiKey),
   });
 }

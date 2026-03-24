@@ -2,82 +2,59 @@ import Link from "next/link";
 
 const steps = [
   {
-    title: "Connect Salesforce",
-    body: "OAuth to production or sandbox. Tokens stay in an encrypted session cookie.",
     href: "/connect",
+    title: "Connect",
+    desc: "OAuth to your org",
+    tint: "from-cyan-500/20 to-cyan-400/5",
+    ring: "ring-cyan-400/25",
   },
   {
-    title: "Connection check",
-    body: "Verifies GPTfy-style objects exist and detects ccai__ / ccai_qa__ vs unprefixed API names.",
     href: "/status",
+    title: "Check",
+    desc: "GPTfy metadata",
+    tint: "from-violet-500/20 to-violet-400/5",
+    ring: "ring-violet-400/25",
   },
   {
-    title: "Generate & download",
-    body: "One click: generate from your use case and publish Apex, prompts, agent, skills, and starter intents in the connected org (or download a ZIP).",
     href: "/generate",
+    title: "Generate",
+    desc: "Use case → deploy or ZIP",
+    tint: "from-emerald-500/20 to-emerald-400/5",
+    ring: "ring-emerald-400/25",
   },
 ] as const;
 
 export default function HomePage() {
   return (
-    <div className="space-y-12">
-      <div className="space-y-4">
-        <p className="text-sm font-medium text-[var(--accent)] tracking-wide uppercase">
-          GPTfy · Agentic skills
+    <div className="space-y-10 lg:space-y-12">
+      <div className="max-w-3xl">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-cyan-400/90">
+          GPTfy · Agent builder
         </p>
-        <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight max-w-2xl">
-          End-to-end web app to draft agents for your org
+        <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          Build agentic handlers &amp; prompts
         </h1>
-        <p className="text-[var(--muted)] text-lg leading-relaxed max-w-2xl">
-          Public-friendly: anyone with a Connected App and GPTfy metadata can connect,
-          validate their org, and export a working starter bundle. Add{" "}
-          <code className="text-cyan-400 text-sm">OPENAI_API_KEY</code> on the server for
-          AI-written Apex; otherwise you get a safe template with a health-check skill.
+        <p className="mt-3 text-base text-neutral-400">
+          Connect Salesforce, validate your org, then generate and publish from a use case.
         </p>
-        <div className="flex flex-wrap gap-3 pt-2">
-          <Link
-            href="/connect"
-            className="inline-flex items-center justify-center rounded-md bg-[var(--accent)] px-5 py-3 font-medium text-white hover:bg-[var(--accent-dim)] transition"
-          >
-            Start — Connect org
-          </Link>
-          <Link
-            href="/generate"
-            className="inline-flex items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] px-5 py-3 font-medium text-white hover:border-[var(--muted)] transition"
-          >
-            Go to generator
-          </Link>
-        </div>
       </div>
 
-      <ol className="grid gap-6 sm:grid-cols-3">
-        {steps.map((s, i) => (
-          <li
-            key={s.href}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 flex flex-col"
-          >
-            <span className="text-3xl font-bold text-[var(--border)] mb-2">{i + 1}</span>
-            <h2 className="font-semibold text-white mb-2">{s.title}</h2>
-            <p className="text-sm text-[var(--muted)] flex-1 mb-4">{s.body}</p>
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {steps.map((s) => (
+          <li key={s.href}>
             <Link
               href={s.href}
-              className="text-sm text-[var(--accent)] hover:underline font-medium"
+              className={`card group block bg-gradient-to-br ${s.tint} ring-1 ${s.ring} transition hover:brightness-110`}
             >
-              Open →
+              <h2 className="text-lg font-semibold text-white group-hover:text-cyan-50">{s.title}</h2>
+              <p className="mt-1 text-sm text-neutral-400">{s.desc}</p>
+              <span className="mt-4 inline-flex text-xs font-medium text-cyan-300/90">
+                Open →
+              </span>
             </Link>
           </li>
         ))}
-      </ol>
-
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]/80 p-6 text-sm text-[var(--muted)]">
-        <h3 className="text-white font-medium mb-2">Deploy this app (Vercel)</h3>
-        <p>
-          Set root to <code className="text-cyan-400">agent-generator-web</code>, add env
-          vars from <code className="text-cyan-400">.env.example</code>, and register the
-          callback URL in your Salesforce Connected App. See{" "}
-          <code className="text-cyan-400">README.md</code> in this folder.
-        </p>
-      </div>
+      </ul>
     </div>
   );
 }

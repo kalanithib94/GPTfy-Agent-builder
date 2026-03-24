@@ -3,13 +3,20 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getSalesforceAuthBase } from "@/lib/sf-endpoints";
 
+function redirectConnectError(request: Request, message: string) {
+  const u = new URL(request.url);
+  const target = new URL("/connect", `${u.protocol}//${u.host}`);
+  target.searchParams.set("error", message);
+  return NextResponse.redirect(target);
+}
+
 export async function GET(request: Request) {
-  const clientId = process.env.SALESFORCE_CLIENT_ID;
-  const redirectUri = process.env.SALESFORCE_CALLBACK_URL;
+  const clientId = process.env.SALESFORCE_CLIENT_ID?.trim();
+  const redirectUri = process.env.SALESFORCE_CALLBACK_URL?.trim();
   if (!clientId || !redirectUri) {
-    return NextResponse.json(
-      { error: "Missing SALESFORCE_CLIENT_ID or SALESFORCE_CALLBACK_URL" },
-      { status: 500 }
+    return redirectConnectError(
+      request,
+      "OAuth is not configured: set SALESFORCE_CLIENT_ID and SALESFORCE_CALLBACK_URL on the server (Vercel Environment Variables or .env.local), then redeploy."
     );
   }
 

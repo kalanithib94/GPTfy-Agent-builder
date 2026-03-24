@@ -3,20 +3,80 @@
 @tailwind utilities;
 
 :root {
-  --bg: #0c0f14;
-  --surface: #151a22;
-  --border: #2a3341;
-  --text: #e8edf4;
-  --muted: #8b9cb3;
-  --accent: #3b82f6;
-  --accent-dim: #1d4ed8;
-  --ok: #22c55e;
-  --warn: #eab308;
-  --err: #ef4444;
+  --bg: #090b10;
+  --bg-elevated: #0f131c;
+  --border: rgba(148, 163, 184, 0.14);
+  --surface: rgba(22, 30, 45, 0.55);
+  --surface-2: rgba(30, 41, 59, 0.35);
+  --muted: #94a3b8;
+  --accent: #22d3ee;
+  --accent-hover: #67e8f9;
+  --accent-dim: rgba(34, 211, 238, 0.12);
+  --accent-2: #a78bfa;
+  --ok: #34d399;
+  --warn: #fbbf24;
 }
 
 body {
-  color: var(--text);
+  @apply text-neutral-200 antialiased text-sm;
   background: var(--bg);
   min-height: 100vh;
+}
+
+.app-glow {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(34, 211, 238, 0.14), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(167, 139, 250, 0.08), transparent 50%),
+    radial-gradient(ellipse 50% 35% at 0% 80%, rgba(52, 211, 153, 0.06), transparent 45%);
+}
+
+/* Plain inputs */
+.inp {
+  @apply w-full rounded-lg border px-3 py-2 text-neutral-100 placeholder:text-neutral-600 transition-colors;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.inp:focus {
+  @apply outline-none ring-2 ring-cyan-400/35;
+}
+
+.btn {
+  @apply rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-45 disabled:pointer-events-none;
+  border-color: var(--border);
+  background: var(--surface);
+  color: #e2e8f0;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.btn-primary {
+  border-color: rgba(34, 211, 238, 0.45);
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.2), rgba(167, 139, 250, 0.15));
+  color: #ecfeff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  border-color: rgba(34, 211, 238, 0.65);
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.3), rgba(167, 139, 250, 0.22));
+}
+
+/* Panels / cards */
+.card {
+  @apply rounded-xl border p-5 sm:p-6;
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.card-muted {
+  @apply rounded-xl border p-4;
+  border-color: var(--border);
+  background: var(--surface-2);
 }

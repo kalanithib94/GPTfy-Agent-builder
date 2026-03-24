@@ -18,14 +18,21 @@ type IdentityResponse = {
   display_name?: string;
 };
 
+function redirectConnectError(requestUrl: string, message: string) {
+  const u = new URL(requestUrl);
+  const target = new URL("/connect", `${u.protocol}//${u.host}`);
+  target.searchParams.set("error", message);
+  return NextResponse.redirect(target);
+}
+
 export async function GET(request: Request) {
-  const clientId = process.env.SALESFORCE_CLIENT_ID;
-  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET;
-  const redirectUri = process.env.SALESFORCE_CALLBACK_URL;
+  const clientId = process.env.SALESFORCE_CLIENT_ID?.trim();
+  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET?.trim();
+  const redirectUri = process.env.SALESFORCE_CALLBACK_URL?.trim();
   if (!clientId || !clientSecret || !redirectUri) {
-    return NextResponse.json(
-      { error: "Salesforce OAuth env vars are not configured" },
-      { status: 500 }
+    return redirectConnectError(
+      request.url,
+      "OAuth is not configured: set SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET, and SALESFORCE_CALLBACK_URL on the server, then redeploy."
     );
   }
 
