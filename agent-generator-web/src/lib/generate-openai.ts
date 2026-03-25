@@ -67,6 +67,20 @@ export async function generateWithOpenAI(
     if (!/global\s+String\s+executeMethod\s*\(/.test(apex)) {
       return "missing required global executeMethod signature";
     }
+    if (!/switch\s+on\s+requestParam\s*\{/.test(apex)) {
+      return "missing required switch on requestParam block";
+    }
+    // Require at least one concrete skill branch.
+    if (!/\bwhen\s+'[^']+'\s*\{/.test(apex)) {
+      return "switch block has no concrete when branches";
+    }
+    // Require fallback branch and return to prevent missing-return compile errors.
+    if (!/\bwhen\s+else\s*\{/.test(apex)) {
+      return "switch block is missing when else fallback";
+    }
+    if (!/\bwhen\s+else\s*\{[\s\S]*?\breturn\b/.test(apex)) {
+      return "when else block must return a String";
+    }
     // Guard against Java-style switch syntax that breaks Apex.
     if (/case\s+'[^']+'\s*:/.test(apex) || /\bcase\s+[A-Za-z0-9_]+\s*:/.test(apex)) {
       return "invalid Apex switch syntax (case:) — use switch on ... when ... { }";
