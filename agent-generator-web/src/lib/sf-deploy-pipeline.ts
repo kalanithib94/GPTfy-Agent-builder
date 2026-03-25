@@ -38,6 +38,10 @@ function truncateName(s: string, max: number): string {
   return s.length <= max ? s : s.substring(0, max);
 }
 
+function lower(v: string | undefined): string {
+  return (v ?? "").trim().toLowerCase();
+}
+
 async function sfDataFetch(
   instanceUrl: string,
   accessToken: string,
@@ -418,6 +422,82 @@ export async function deployBundleToConnectedOrg(
       });
     }
     addStep("Activate AI_Prompt__c records", true);
+
+    // Validate action dependencies before creating intent/action rows or publishing the agent.
+    const referencedApex = new Set<string>();
+    const referencedFlows = new Set<string>();
+    const dependencyErrors: string[] = [];
+
+    for (const plan of plans) {
+      for (const act of plan.actions) {
+        const kind = lower(act.actionType);
+        if (kind === "apex") {
+          const cls = (act.apexClass ?? "").trim();
+          if (!cls) {
+            dependencyErrors.push(
+              `Intent ${plan.name}: Apex action missing apexClass`
+            );
+          } else {
+            referencedApex.add(cls);
+          }
+        }
+        if (kind === "flow") {
+          const flow = (act.flowApiName ?? "").trim();
+          if (!flow) {
+            dependencyErrors.push(
+              `Intent ${plan.name}: Flow action missing flowApiName`
+            );
+          } else {
+            referencedFlows.add(flow);
+          }
+        }
+      }
+    }
+
+    for (const cls of Array.from(referencedApex)) {
+      // Handler class was just deployed in this pipeline; skip redundant lookup for that one.
+      if (cls === bundle.parameters.handlerClass) continue;
+      const rows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ApexClass WHERE Name = '${soqlEscape(cls)}' LIMIT 1`
+      );
+      if (!rows[0]?.Id) {
+        dependencyErrors.push(
+          `Referenced Apex class not found: ${cls}`
+        );
+      }
+    }
+
+    for (const flow of Array.from(referencedFlows)) {
+      const rows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id, ActiveVersionId FROM FlowDefinition WHERE DeveloperName = '${soqlEscape(flow)}' LIMIT 1`
+      );
+      if (!rows[0]?.Id) {
+        dependencyErrors.push(`Referenced Flow not found: ${flow}`);
+        continue;
+      }
+      if (!rows[0]?.ActiveVersionId) {
+        dependencyErrors.push(`Referenced Flow has no active version: ${flow}`);
+      }
+    }
+
+    if (dependencyErrors.length > 0) {
+      for (const e of dependencyErrors) pushErr(e);
+      addStep(
+        "Validate Apex/Flow dependencies",
+        false,
+        `${dependencyErrors.length} missing dependency issue(s)`
+      );
+      return { ok: false, steps, errors };
+    }
+    addStep(
+      "Validate Apex/Flow dependencies",
+      true,
+      `apex=${referencedApex.size}, flow=${referencedFlows.size}`
+    );
 
     const existingNames = new Set(
       (
