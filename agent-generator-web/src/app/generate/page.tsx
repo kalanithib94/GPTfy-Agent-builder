@@ -45,6 +45,7 @@ export default function GeneratePage() {
   );
   const [dataMappingName, setDataMappingName] = useState("Prepackaged - Case");
   const [notes, setNotes] = useState("");
+  const [openaiModel, setOpenaiModel] = useState("");
   const [useTemplateOnly, setUseTemplateOnly] = useState(false);
 
   const [bundle, setBundle] = useState<GeneratedBundle | null>(null);
@@ -56,12 +57,21 @@ export default function GeneratePage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [deployLoading, setDeployLoading] = useState(false);
+  const [retryLoading, setRetryLoading] = useState(false);
+  const [retryNotes, setRetryNotes] = useState("");
+  const [retryErrorText, setRetryErrorText] = useState("");
   const [deployOutcome, setDeployOutcome] = useState<DeployOutcome | null>(null);
 
   const loadSession = useCallback(async () => {
     try {
       const res = await fetch("/api/session", { cache: "no-store" });
-      if (res.ok) setSession((await res.json()) as SessionInfo);
+      if (res.ok) {
+        const s = (await res.json()) as SessionInfo;
+        setSession(s);
+        setOpenaiModel((prev) =>
+          prev.trim() ? prev : (s.openaiModel?.trim() || "gpt-4o-mini")
+        );
+      }
     } catch {
       setSession(null);
     }
@@ -82,6 +92,7 @@ export default function GeneratePage() {
       agentModelConnectionName: agentModelConnectionName || undefined,
       dataMappingName: dataMappingName || undefined,
       notes: notes || undefined,
+      openaiModel: openaiModel.trim() || undefined,
       useTemplateOnly: useTemplateOnly || undefined,
     };
   }
@@ -92,6 +103,8 @@ export default function GeneratePage() {
     setBundle(null);
     setWarnings([]);
     setDeployOutcome(null);
+    setRetryErrorText("");
+    setRetryNotes("");
     setPipelineLoading(true);
     try {
       const res = await fetch("/api/pipeline/run", {
@@ -115,6 +128,10 @@ export default function GeneratePage() {
       setBundle(j.bundle as GeneratedBundle);
       setWarnings(Array.isArray(j.warnings) ? j.warnings : []);
       setDeployOutcome(j.deploy as DeployOutcome);
+      const deploy = j.deploy as DeployOutcome;
+      if (deploy?.errors?.length) {
+        setRetryErrorText(deploy.errors.join("\n"));
+      }
       setTab("spec");
     } catch {
       setErr("Pipeline request failed");
@@ -140,10 +157,54 @@ export default function GeneratePage() {
         return;
       }
       setDeployOutcome(j as DeployOutcome);
+      if (Array.isArray((j as DeployOutcome).errors) && (j as DeployOutcome).errors.length) {
+        setRetryErrorText((j as DeployOutcome).errors.join("\n"));
+      }
     } catch {
       setErr("Deploy request failed");
     } finally {
       setDeployLoading(false);
+    }
+  }
+
+  async function retryFixFromDeployErrors() {
+    if (!bundle) return;
+    const deployErrorText = retryErrorText.trim() || deployOutcome?.errors.join("\n") || "";
+    if (!deployErrorText) {
+      setErr("Add deploy error details first, then retry fix.");
+      return;
+    }
+    setRetryLoading(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/generate/retry-fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bundle,
+          useCase,
+          notes: notes || undefined,
+          deployErrorText,
+          retryNotes: retryNotes || undefined,
+          openaiModel: openaiModel.trim() || undefined,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(typeof j.error === "string" ? j.error : "Retry fix failed");
+        return;
+      }
+      setBundle(j.bundle as GeneratedBundle);
+      setWarnings((prev) => [
+        ...prev,
+        ...(Array.isArray(j.warnings) ? (j.warnings as string[]) : []),
+      ]);
+      setDeployOutcome(null);
+      setTab("handler");
+    } catch {
+      setErr("Retry fix request failed");
+    } finally {
+      setRetryLoading(false);
     }
   }
 
@@ -153,6 +214,8 @@ export default function GeneratePage() {
     setBundle(null);
     setWarnings([]);
     setDeployOutcome(null);
+    setRetryErrorText("");
+    setRetryNotes("");
     setLoading(true);
     try {
       const res = await fetch("/api/generate/full", {
@@ -357,6 +420,23 @@ export default function GeneratePage() {
           />
         </div>
 
+        <div className="max-w-xl">
+          <label className="block text-sm font-medium text-[var(--muted)] mb-1">
+            OpenAI model (optional override)
+          </label>
+          <input
+            type="text"
+            value={openaiModel}
+            onChange={(e) => setOpenaiModel(e.target.value)}
+            placeholder={session?.openaiModel || "gpt-4o-mini"}
+            className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm"
+          />
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            Leave as default, or set another model ID (example: <code>gpt-4o-mini</code>,{" "}
+            <code>gpt-4.1-mini</code>).
+          </p>
+        </div>
+
         <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer">
           <input
             type="checkbox"
@@ -431,6 +511,46 @@ export default function GeneratePage() {
               ))}
             </ul>
           ) : null}
+        </div>
+      ) : null}
+
+      {bundle && deployOutcome && !deployOutcome.ok ? (
+        <div className="rounded-lg border border-violet-800/60 bg-violet-950/20 p-4 space-y-3">
+          <h3 className="text-white font-semibold">Retry fix from deploy errors</h3>
+          <p className="text-xs text-[var(--muted)]">
+            Sends previous Apex + these errors back to OpenAI so it can patch and regenerate.
+          </p>
+          <div>
+            <label className="block text-xs text-[var(--muted)] mb-1">Deploy errors</label>
+            <textarea
+              rows={6}
+              value={retryErrorText}
+              onChange={(e) => setRetryErrorText(e.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-black/40 px-3 py-2 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-500 whitespace-pre-wrap font-mono text-xs"
+              placeholder="Paste deploy errors here if needed"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--muted)] mb-1">Extra instructions (optional)</label>
+            <input
+              type="text"
+              value={retryNotes}
+              onChange={(e) => setRetryNotes(e.target.value)}
+              className="w-full rounded-md border border-[var(--border)] bg-black/40 px-3 py-2 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
+              placeholder="Example: keep only 2 skills and avoid dynamic SOQL"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => retryFixFromDeployErrors()}
+              disabled={retryLoading || !retryErrorText.trim()}
+              className="rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50"
+            >
+              {retryLoading ? "Retrying…" : "Retry fix with OpenAI"}
+            </button>
+            <span className="text-xs text-[var(--muted)]">Model: {openaiModel || session?.openaiModel || "gpt-4o-mini"}</span>
+          </div>
         </div>
       ) : null}
 

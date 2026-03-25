@@ -20,6 +20,10 @@ export const generateRequestSchema = z.object({
   agentModelConnectionName: z.string().optional(),
   dataMappingName: z.string().optional(),
   notes: z.string().optional(),
+  openaiModel: z
+    .string()
+    .regex(/^[A-Za-z0-9._:-]{2,80}$/)
+    .optional(),
   /** Skip OpenAI and use built-in template */
   useTemplateOnly: z.boolean().optional(),
 });

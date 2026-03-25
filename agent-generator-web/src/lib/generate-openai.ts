@@ -34,6 +34,13 @@ type OpenAIResult =
   | { ok: true; bundle: GeneratedBundle }
   | { ok: false; error: string };
 
+type GenerateWithOpenAIOptions = {
+  modelOverride?: string;
+  previousHandlerApex?: string;
+  deployErrorText?: string;
+  retryNotes?: string;
+};
+
 export async function generateWithOpenAI(
   apiKey: string,
   params: GeneratedBundle["parameters"],
@@ -42,7 +49,8 @@ export async function generateWithOpenAI(
   orgContext: {
     instanceUrl?: string;
     gptfyNamespace?: string;
-  }
+  },
+  options?: GenerateWithOpenAIOptions
 ): Promise<OpenAIResult> {
   const resolveAgenticInterfaceSymbol = (gptfyNamespace?: string): string => {
     const raw = gptfyNamespace?.trim();
@@ -91,6 +99,10 @@ export async function generateWithOpenAI(
     return null;
   };
 
+  const retryMode =
+    Boolean(options?.previousHandlerApex?.trim()) &&
+    Boolean(options?.deployErrorText?.trim());
+
   const system = `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
 Return ONLY valid JSON (no markdown) with keys:
 handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan (optional array).
@@ -105,6 +117,8 @@ handlerApex requirements:
 - System.debug(LoggingLevel.ERROR, 'PREFIX | ...') for diagnostics; never use variable name desc
 - CRUD checks via Schema.sObjectType or isAccessible/isCreateable as appropriate
 - with sharing
+- NEVER output Java-style "case ...:" syntax; Apex must use "switch on ... { when ... { ... } when else { ... } }".
+- Ensure switch on requestParam includes at least one concrete when branch and a when else branch that returns String.
 
 agentSystemPrompt: MUST state tools must be called for any Salesforce operation; never claim success without tool JSON showing success.
 
@@ -121,9 +135,22 @@ fullConfigStubApex: optional Apex snippet as string with String targetAgentName 
     org: orgContext,
     handlerClass: params.handlerClass,
     agentDeveloperName: params.agentDeveloperName,
+    mode: retryMode ? "retry_fix" : "fresh_generate",
+    retry: retryMode
+      ? {
+          deployErrors: options?.deployErrorText ?? "",
+          previousHandlerApex: options?.previousHandlerApex ?? "",
+          retryNotes: options?.retryNotes ?? "",
+          instruction:
+            "Fix the previous handler using deployErrors. Keep working skills, repair compile/runtime issues, and return deploy-ready Apex.",
+        }
+      : null,
   });
 
-  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+  const model =
+    options?.modelOverride?.trim() ||
+    process.env.OPENAI_MODEL?.trim() ||
+    "gpt-4o-mini";
   const bodyPayload = JSON.stringify({
     model,
     response_format: { type: "json_object" },

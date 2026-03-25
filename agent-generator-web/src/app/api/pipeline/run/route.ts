@@ -57,7 +57,8 @@ export async function POST(request: Request) {
       {
         instanceUrl: session.instanceUrl,
         gptfyNamespace: session.gptfyNamespace,
-      }
+      },
+      { modelOverride: p.openaiModel }
     );
     if (ai.ok) {
       bundle = ai.bundle;
