@@ -214,7 +214,51 @@ promptCommands: array of { "fileName": "my_skill_PromptCommand.json", "content":
 
 intentsConfigMd: markdown, include greeting and out_of_scope intents at minimum.
 
-fullConfigStubApex: optional Apex snippet as string with String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}'; and TODO comments.`;
+fullConfigStubApex: optional Apex snippet as string with String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}'; and TODO comments.
+
+EXAMPLES (follow these patterns exactly):
+1) Handler branch pattern:
+global String executeMethod(String requestParam, Map<String, Object> parameters) {
+  try {
+    if (parameters == null) parameters = new Map<String, Object>();
+    switch on requestParam {
+      when 'find_opportunity' { return handleFindOpportunity(parameters); }
+      when else { return err('Unsupported skill: ' + requestParam); }
+    }
+  } catch (Exception ex) {
+    System.debug(LoggingLevel.ERROR, 'AGENT | EXCEPTION | ' + ex.getMessage());
+    return err(ex.getMessage());
+  }
+}
+private String handleFindOpportunity(Map<String, Object> parameters) {
+  String oppName = (String) parameters.get('opportunity_name');
+  if (String.isBlank(oppName)) return err('Missing required parameter: opportunity_name');
+  if (!Schema.sObjectType.Opportunity.isAccessible()) return err('Opportunity is not accessible.');
+  List<Opportunity> opps = [SELECT Id, Name, StageName, CloseDate FROM Opportunity WHERE Name = :oppName LIMIT 5];
+  if (opps.isEmpty()) return err('No opportunity found for provided name.');
+  return ok(new Map<String, Object>{ 'status' => 'found', 'records' => opps });
+}
+
+2) Prompt command JSON pattern:
+{
+  "type": "object",
+  "properties": {
+    "opportunity_name": {
+      "type": "string",
+      "description": "ONLY the exact opportunity name to search."
+    }
+  },
+  "required": ["opportunity_name"]
+}
+
+3) System prompt quality pattern:
+Include sections for:
+- CORE RESPONSIBILITIES
+- TOOL USAGE RULES (MANDATORY)
+- SAFETY AND DATA INTEGRITY
+- ERROR-HANDLING POLICY
+- RESPONSE STYLE
+and explicitly state "Never claim success without tool JSON showing success=true".`;
 
   const user = JSON.stringify({
     useCase,
