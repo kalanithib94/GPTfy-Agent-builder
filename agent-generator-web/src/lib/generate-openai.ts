@@ -127,8 +127,8 @@ function normalizeKey(v: string): string {
   return v.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function intentActionClassNameFromHandler(handlerClass: string): string {
-  let s = `${handlerClass}IntentAction`.replace(/[^A-Za-z0-9_]/g, "");
+function intentActionClassNameFromHandler(handlerClass: string, seed = "IntentAction"): string {
+  let s = `${handlerClass}_${seed}`.replace(/[^A-Za-z0-9_]/g, "");
   if (!/^[A-Za-z]/.test(s)) s = `A${s}`;
   if (s.length > 40) s = s.slice(0, 40);
   return s;
@@ -199,9 +199,29 @@ function buildProactiveIntent(
     ],
   });
 
+  const updateOpportunityAction = () => ({
+    seq: 1,
+    actionType: "Update Field",
+    objectApiName: "Opportunity",
+    details: [
+      {
+        fieldApiName: "StageName",
+        type: "AI Extracted",
+        valueOrInstruction:
+          "Extract the target stage from the user request and map to a valid opportunity stage.",
+      },
+      {
+        fieldApiName: "CloseDate",
+        type: "AI Extracted",
+        valueOrInstruction:
+          "Extract or infer the new close date from conversation context in a valid date format.",
+      },
+    ],
+  });
+
   const actionsByIntent = [
     [createTaskAction("High")],
-    [createTaskAction("Normal")],
+    [updateOpportunityAction()],
     [
       {
         seq: 1,
@@ -228,7 +248,6 @@ function enforceIntentPlanStrictness(
   if (!plan?.length) return plan;
 
   const skillKeys = new Set(skillNames.map((s) => normalizeKey(s)).filter(Boolean));
-  const intentActionClass = intentActionClassNameFromHandler(handlerClass);
   let proactiveIdx = 1;
 
   const rewritten: IntentPlanItem[] = plan.map((intent) => {
@@ -241,10 +260,14 @@ function enforceIntentPlanStrictness(
     );
 
     if (!isSystemIntent && duplicatesSkill) {
+      const actionClass = intentActionClassNameFromHandler(
+        handlerClass,
+        `${intent.name}_${proactiveIdx}`
+      );
       const replacement = buildProactiveIntent(
         proactiveIdx++,
         intent.sequence,
-        intentActionClass
+        actionClass
       );
       return replacement;
     }
@@ -276,7 +299,11 @@ function enforceIntentPlanStrictness(
     for (const a of intent.actions) {
       const t = lowerActionType(a.actionType);
       if ((t === "create record" || t === "update field") && (!a.objectApiName || !a.details?.length)) {
-        const fallback = buildProactiveIntent(proactiveIdx++, intent.sequence, intentActionClass);
+        const actionClass = intentActionClassNameFromHandler(
+          handlerClass,
+          `${intent.name}_${proactiveIdx}`
+        );
+        const fallback = buildProactiveIntent(proactiveIdx++, intent.sequence, actionClass);
         repaired.push(...fallback.actions);
         continue;
       }
@@ -294,7 +321,11 @@ function enforceIntentPlanStrictness(
   if (domainNonCanned < 2) {
     const needed = 2 - domainNonCanned;
     for (let i = 0; i < needed; i++) {
-      rewritten.push(buildProactiveIntent(proactiveIdx++, 100 + i, intentActionClass));
+      const actionClass = intentActionClassNameFromHandler(
+        handlerClass,
+        `proactive_${proactiveIdx}`
+      );
+      rewritten.push(buildProactiveIntent(proactiveIdx++, 100 + i, actionClass));
     }
   }
 
@@ -321,7 +352,6 @@ function ensureIntentActionDiversity(
     return !n.includes("greeting") && !n.includes("out_of_scope");
   });
   const pool = domainIntents.length ? domainIntents : cloned;
-  const intentActionClass = intentActionClassNameFromHandler(handlerClass);
 
   const allActions = cloned.flatMap((intent) => intent.actions);
   const nonCannedCount = allActions.filter((a) => !isCannedActionType(a.actionType)).length;
@@ -333,10 +363,14 @@ function ensureIntentActionDiversity(
     const hasNonCanned = intent.actions.some((a) => !isCannedActionType(a.actionType));
     if (hasNonCanned) continue;
     const nextSeq = (intent.actions.map((a) => a.seq).sort((a, b) => b - a)[0] ?? 0) + 1;
+    const actionClass = intentActionClassNameFromHandler(
+      handlerClass,
+      `${intent.name}_${nextSeq}`
+    );
     intent.actions.push({
       seq: nextSeq,
       actionType: "Apex",
-      apexClass: intentActionClass,
+      apexClass: actionClass,
       apexReturnType: "Map",
     });
     added += 1;
