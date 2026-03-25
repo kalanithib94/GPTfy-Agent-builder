@@ -11,6 +11,7 @@ import { refreshSalesforceAccessToken } from "./sf-token-refresh";
 import type { SfSessionData } from "./session";
 import { readFile } from "fs/promises";
 import path from "path";
+import { getOpenAIApiKey, getOpenAIModel } from "./openai-server-config";
 
 const API_VER = "v59.0";
 
@@ -75,12 +76,36 @@ function buildIntentActionApexStub(
 `;
   const body = `global with sharing class ${className} implements ${iface} {
     global Map<String, Object> invokeApex(Map<String, Object> request) {
-        return new Map<String, Object>{
+        Map<String, Object> out = new Map<String, Object>{
             'success' => false,
-            'status' => 'not_configured',
-            'message' => 'Auto-generated placeholder action class. Please implement business logic.',
+            'status' => 'error',
             'purpose' => '${escapedPurpose}'
         };
+        try {
+            if (request == null) request = new Map<String, Object>();
+            String subject = (String) request.get('subject');
+            if (String.isBlank(subject)) {
+                subject = 'Intent action: ${escapedPurpose}'.left(80);
+            }
+            String whatId = (String) request.get('recordId');
+            if (Schema.sObjectType.Task.isCreateable()) {
+                Task t = new Task(Subject = subject, Status = 'Not Started');
+                if (!String.isBlank(whatId)) t.WhatId = whatId;
+                insert t;
+                out.put('taskId', t.Id);
+                out.put('status', 'completed');
+                out.put('success', true);
+                out.put('message', 'Intent action executed by creating a follow-up task.');
+                return out;
+            }
+            out.put('status', 'noop');
+            out.put('success', true);
+            out.put('message', 'No create permission on Task, action handled without DML.');
+            return out;
+        } catch (Exception ex) {
+            out.put('message', ex.getMessage());
+            return out;
+        }
     }
 }`;
   return { body, metaXml };
@@ -96,6 +121,71 @@ function buildNoopAutolaunchedFlowMeta(flowApiName: string): string {
     <status>Active</status>
 </Flow>
 `;
+}
+
+function stripCodeFences(text: string): string {
+  return text
+    .replace(/^```[a-zA-Z]*\s*/g, "")
+    .replace(/\s*```$/g, "")
+    .trim();
+}
+
+async function generateIntentActionApexWithOpenAI(args: {
+  className: string;
+  interfaceSymbol: string;
+  intentName: string;
+  actionType: string;
+  purpose: string;
+  model?: string;
+  apiKey: string;
+}): Promise<string | null> {
+  const system = `You generate production-ready Salesforce Apex for GPTfy intent actions.
+Return ONLY Apex code (no markdown).
+Requirements:
+- global with sharing class ${args.className} implements ${args.interfaceSymbol}
+- Must include: global Map<String, Object> invokeApex(Map<String, Object> request)
+- Must include try/catch and safe null handling for request
+- Must perform meaningful action for the purpose (avoid no-op placeholder)
+- Use CRUD checks before DML
+- Return Map with keys: success (Boolean), status (String), message (String)
+- Keep implementation concise and compile-safe in API 59.0`;
+  const user = JSON.stringify({
+    intentName: args.intentName,
+    actionType: args.actionType,
+    purpose: args.purpose,
+  });
+  const payload = JSON.stringify({
+    model: args.model || "gpt-4o-mini",
+    temperature: 0.2,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: payload,
+    });
+    if (!res.ok) return null;
+    const raw = await res.text();
+    const parsed = JSON.parse(raw) as {
+      choices?: { message?: { content?: string } }[];
+    };
+    const content = parsed.choices?.[0]?.message?.content?.trim();
+    if (!content) return null;
+    const apex = stripCodeFences(content);
+    if (!apex.includes(`class ${args.className}`)) return null;
+    if (!apex.includes(`implements ${args.interfaceSymbol}`)) return null;
+    if (!/invokeApex\s*\(\s*Map<\s*String\s*,\s*Object\s*>\s*request\s*\)/.test(apex)) return null;
+    return apex;
+  } catch {
+    return null;
+  }
 }
 
 async function sfDataFetch(
@@ -482,35 +572,95 @@ export async function deployBundleToConnectedOrg(
     // Auto-provision dependencies used by intent actions before creating rows/publishing.
     const referencedApex = new Set<string>();
     const referencedFlows = new Set<string>();
+    const apexPurpose = new Map<string, string>();
     const provisionErrors: string[] = [];
     const provisionNotes: string[] = [];
+    const openaiKey = await getOpenAIApiKey();
+    const openaiModel = getOpenAIModel();
+
+    const ensureApexDependency = async (
+      className: string,
+      purpose: string
+    ): Promise<boolean> => {
+      let rows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ApexClass WHERE Name = '${soqlEscape(className)}' LIMIT 1`
+      );
+      if (rows[0]?.Id) return true;
+
+      const iface = resolveIntentActionInterfaceSymbol(session.gptfyNamespace);
+      const aiBody =
+        openaiKey ?
+          await generateIntentActionApexWithOpenAI({
+            className,
+            interfaceSymbol: iface,
+            intentName: className,
+            actionType: "Apex",
+            purpose,
+            model: openaiModel,
+            apiKey: openaiKey,
+          })
+        : null;
+      const fallback = buildIntentActionApexStub(className, session.gptfyNamespace, purpose);
+      const dep = await deployApexClassMetadata(
+        instanceUrl,
+        token,
+        className,
+        aiBody ?? fallback.body,
+        fallback.metaXml
+      );
+      if (!dep.ok) {
+        provisionErrors.push(`Could not auto-create Apex dependency ${className}: ${dep.message}`);
+        return false;
+      }
+      rows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ApexClass WHERE Name = '${soqlEscape(className)}' LIMIT 1`
+      );
+      if (!rows[0]?.Id) {
+        provisionErrors.push(`Apex dependency ${className} still missing after deploy`);
+        return false;
+      }
+      provisionNotes.push(`Auto-created Apex dependency: ${className}`);
+      return true;
+    };
 
     for (const plan of plans) {
       for (const act of plan.actions) {
         const kind = lower(act.actionType);
+        const purpose = [
+          `Intent=${plan.name}`,
+          plan.description ? `IntentDescription=${plan.description}` : "",
+          `ActionType=${act.actionType}`,
+        ]
+          .filter(Boolean)
+          .join(" | ");
+
         if (kind === "apex") {
           const cls = (act.apexClass ?? "").trim();
+          const finalClass = cls || sanitizeApexClassName(`${plan.name}_IntentAction`);
+          act.apexClass = finalClass;
+          act.apexReturnType = "String";
+          referencedApex.add(finalClass);
+          if (!apexPurpose.has(finalClass)) apexPurpose.set(finalClass, purpose);
           if (!cls) {
-            const generated = sanitizeApexClassName(`${plan.name}_IntentAction`);
-            act.apexClass = generated;
-            act.apexReturnType = "String";
-            provisionNotes.push(`Intent ${plan.name}: generated missing apexClass ${generated}`);
-            referencedApex.add(generated);
-          } else {
-            referencedApex.add(cls);
+            provisionNotes.push(`Intent ${plan.name}: generated missing apexClass ${finalClass}`);
           }
         } else if (kind === "flow") {
           const flow = (act.flowApiName ?? "").trim();
           if (!flow) {
-            const generated = sanitizeApexClassName(`${plan.name}_FlowFallbackAction`);
+            const generated = sanitizeApexClassName(`${plan.name}_FlowAction`);
             act.actionType = "Apex";
             act.apexClass = generated;
             act.apexReturnType = "String";
             act.flowApiName = undefined;
+            referencedApex.add(generated);
+            apexPurpose.set(generated, `${purpose} | ConvertedFrom=FlowMissingName`);
             provisionNotes.push(
               `Intent ${plan.name}: missing flowApiName, converted action to Apex ${generated}`
             );
-            referencedApex.add(generated);
           } else {
             referencedFlows.add(flow);
           }
@@ -519,41 +669,9 @@ export async function deployBundleToConnectedOrg(
     }
 
     for (const cls of Array.from(referencedApex)) {
-      // Handler class was just deployed in this pipeline; skip redundant lookup for that one.
-      if (cls === bundle.parameters.handlerClass) continue;
-      let rows = await runQuery(
-        instanceUrl,
-        token,
-        `SELECT Id FROM ApexClass WHERE Name = '${soqlEscape(cls)}' LIMIT 1`
-      );
-      if (rows[0]?.Id) continue;
-
-      const stub = buildIntentActionApexStub(
-        cls,
-        session.gptfyNamespace,
-        "Auto-provisioned for intent action dependency"
-      );
-      const dep = await deployApexClassMetadata(
-        instanceUrl,
-        token,
-        cls,
-        stub.body,
-        stub.metaXml
-      );
-      if (!dep.ok) {
-        provisionErrors.push(`Could not auto-create Apex dependency ${cls}: ${dep.message}`);
-        continue;
-      }
-      rows = await runQuery(
-        instanceUrl,
-        token,
-        `SELECT Id FROM ApexClass WHERE Name = '${soqlEscape(cls)}' LIMIT 1`
-      );
-      if (!rows[0]?.Id) {
-        provisionErrors.push(`Apex dependency ${cls} still missing after deploy`);
-      } else {
-        provisionNotes.push(`Auto-created Apex dependency: ${cls}`);
-      }
+      const purpose = apexPurpose.get(cls) ?? "Auto-provisioned intent action";
+      const ok = await ensureApexDependency(cls, purpose);
+      if (!ok) continue;
     }
 
     for (const flow of Array.from(referencedFlows)) {
@@ -578,39 +696,25 @@ export async function deployBundleToConnectedOrg(
           // continue
         }
       }
-      if (!flowMeta.trim()) {
-        flowMeta = buildNoopAutolaunchedFlowMeta(flow);
-      }
-      const dep = await deployFlowMetadata(instanceUrl, token, flow, flowMeta);
-      if (!dep.ok) {
-        provisionErrors.push(`Could not auto-create/activate Flow dependency ${flow}: ${dep.message}`);
-        continue;
-      }
-
-      rows = await runQuery(
-        instanceUrl,
-        token,
-        `SELECT Id, ActiveVersionId FROM FlowDefinition WHERE DeveloperName = '${soqlEscape(flow)}' LIMIT 1`
-      );
-      if (!rows[0]?.Id || !rows[0]?.ActiveVersionId) {
-        // Fall back by converting flow actions to Apex placeholder.
-        const fallback = sanitizeApexClassName(`${flow}_FlowFallbackAction`);
-        const stub = buildIntentActionApexStub(
-          fallback,
-          session.gptfyNamespace,
-          `Fallback for missing/inactive flow ${flow}`
-        );
-        const depApex = await deployApexClassMetadata(
+      if (flowMeta.trim()) {
+        const dep = await deployFlowMetadata(instanceUrl, token, flow, flowMeta);
+        if (!dep.ok) {
+          provisionErrors.push(`Could not auto-create/activate Flow dependency ${flow}: ${dep.message}`);
+          continue;
+        }
+        rows = await runQuery(
           instanceUrl,
           token,
-          fallback,
-          stub.body,
-          stub.metaXml
+          `SELECT Id, ActiveVersionId FROM FlowDefinition WHERE DeveloperName = '${soqlEscape(flow)}' LIMIT 1`
         );
-        if (!depApex.ok) {
-          provisionErrors.push(
-            `Flow ${flow} unavailable and fallback Apex creation failed: ${depApex.message}`
-          );
+      }
+
+      if (!rows[0]?.Id || !rows[0]?.ActiveVersionId) {
+        const fallback = sanitizeApexClassName(`${flow}_FlowAction`);
+        const purpose = `Converted Flow action for ${flow}. Execute business intent when flow is unavailable.`;
+        const ok = await ensureApexDependency(fallback, purpose);
+        if (!ok) {
+          provisionErrors.push(`Flow ${flow} unavailable and Apex fallback provisioning failed`);
           continue;
         }
         for (const plan of plans) {
@@ -624,7 +728,7 @@ export async function deployBundleToConnectedOrg(
           }
         }
         provisionNotes.push(
-          `Flow ${flow} unavailable after deploy; converted related actions to Apex fallback ${fallback}`
+          `Flow ${flow} unavailable after deploy; converted related actions to Apex ${fallback}`
         );
       } else {
         provisionNotes.push(`Auto-created/activated Flow dependency: ${flow}`);
