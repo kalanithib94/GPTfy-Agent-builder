@@ -70,7 +70,7 @@ export default function GeneratePage() {
         const s = (await res.json()) as SessionInfo;
         setSession(s);
         setOpenaiModel((prev) =>
-          prev.trim() ? prev : (s.openaiModel?.trim() || "gpt-4o-mini")
+          prev.trim() ? prev : (s.openaiModel?.trim() || "gpt-4.1-mini")
         );
       }
     } catch {
@@ -429,12 +429,12 @@ export default function GeneratePage() {
             type="text"
             value={openaiModel}
             onChange={(e) => setOpenaiModel(e.target.value)}
-            placeholder={session?.openaiModel || "gpt-4o-mini"}
+            placeholder={session?.openaiModel || "gpt-4.1-mini"}
             className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm"
           />
           <p className="mt-1 text-xs text-[var(--muted)]">
-            Leave as default, or set another model ID (example: <code>gpt-4o-mini</code>,{" "}
-            <code>gpt-4.1-mini</code>).
+            Leave as default, or set another model ID (example: <code>gpt-4.1-mini</code>,{" "}
+            <code>gpt-4.1</code>).
           </p>
         </div>
 
@@ -550,7 +550,7 @@ export default function GeneratePage() {
             >
               {retryLoading ? "Retrying…" : "Retry fix with OpenAI"}
             </button>
-            <span className="text-xs text-[var(--muted)]">Model: {openaiModel || session?.openaiModel || "gpt-4o-mini"}</span>
+            <span className="text-xs text-[var(--muted)]">Model: {openaiModel || session?.openaiModel || "gpt-4.1-mini"}</span>
           </div>
         </div>
       ) : null}

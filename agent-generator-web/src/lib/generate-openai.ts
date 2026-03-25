@@ -350,7 +350,7 @@ and explicitly state "Never claim success without tool JSON showing success=true
   const model =
     options?.modelOverride?.trim() ||
     process.env.OPENAI_MODEL?.trim() ||
-    "gpt-4o-mini";
+    "gpt-4.1-mini";
   const bodyPayload = JSON.stringify({
     model,
     response_format: { type: "json_object" },

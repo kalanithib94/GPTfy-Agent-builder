@@ -155,7 +155,7 @@ Requirements:
     purpose: args.purpose,
   });
   const payload = JSON.stringify({
-    model: args.model || "gpt-4o-mini",
+    model: args.model || "gpt-4.1-mini",
     temperature: 0.2,
     messages: [
       { role: "system", content: system },
