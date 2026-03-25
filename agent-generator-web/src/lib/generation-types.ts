@@ -57,6 +57,8 @@ export const generatedBundleSchema = z.object({
   fullConfigStubApex: z.string(),
   /** Structured intents for org deploy (optional — defaults applied server-side) */
   intentDeployPlan: z.array(intentDeployPlanSchema).optional(),
+  /** Sample queries users can ask this agent after deploy */
+  sampleQueries: z.array(z.string()).optional(),
 });
 
 export type GeneratedBundle = z.infer<typeof generatedBundleSchema>;

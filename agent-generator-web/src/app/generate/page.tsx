@@ -30,6 +30,7 @@ const TABS = [
   { id: "desc", label: "Description" },
   { id: "intents", label: "Intents" },
   { id: "fullconfig", label: "FullConfig stub" },
+  { id: "samples", label: "Try it" },
 ] as const;
 
 export default function GeneratePage() {
@@ -669,6 +670,25 @@ function renderTab(
       );
     case "fullconfig":
       return wrap("fc", bundle.fullConfigStubApex);
+    case "samples":
+      return (
+        <div className="rounded-xl border border-[var(--border)] bg-black/30 p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-white">10 sample queries to test this agent</h3>
+          {(bundle.sampleQueries?.length ? bundle.sampleQueries : []).length ? (
+            <ol className="list-decimal list-inside space-y-2 text-sm text-gray-200">
+              {(bundle.sampleQueries ?? []).slice(0, 10).map((q, i) => (
+                <li key={`sample_${i}`}>
+                  <span className="whitespace-pre-wrap">{q}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="text-sm text-amber-200">
+              No sample queries in this bundle yet. Regenerate once to get examples.
+            </div>
+          )}
+        </div>
+      );
     default:
       return null;
   }

@@ -419,12 +419,6 @@ export async function deployBundleToConnectedOrg(
     }
     addStep("Activate AI_Prompt__c records", true);
 
-    await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ [fAgStat!]: "Active" }),
-    });
-    addStep("Publish AI_Agent__c (Active)", true);
-
     const existingNames = new Set(
       (
         await runQuery(
@@ -468,8 +462,9 @@ export async function deployBundleToConnectedOrg(
         };
         if (fActSeq) actBody[fActSeq] = act.seq;
         if (fActType) actBody[fActType] = act.actionType;
-        if (fLang && act.language) actBody[fLang] = act.language;
-        if (fCanned && act.cannedText) actBody[fCanned] = act.cannedText;
+        const isCanned = (act.actionType ?? "").toLowerCase() === "canned response";
+        if (fLang && isCanned && act.language) actBody[fLang] = act.language;
+        if (fCanned && isCanned && act.cannedText) actBody[fCanned] = act.cannedText;
         if (fObj && act.objectApiName) actBody[fObj] = act.objectApiName;
         if (fFlow && act.flowApiName) actBody[fFlow] = act.flowApiName;
         if (fApex && act.apexClass) actBody[fApex] = act.apexClass;
@@ -510,6 +505,12 @@ export async function deployBundleToConnectedOrg(
       errors.length === 0 || intentsCreated > 0,
       errors.length ? "Some rows may have failed — see errors" : undefined
     );
+
+    await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ [fAgStat!]: "Active" }),
+    });
+    addStep("Publish AI_Agent__c (Active)", true);
 
     const ok = errors.length === 0;
     return { ok, steps, errors };

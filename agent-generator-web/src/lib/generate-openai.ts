@@ -21,6 +21,7 @@ const llmShape = z.object({
   specMarkdown: z.string().optional(),
   fullConfigStubApex: z.string().optional(),
   intentDeployPlan: z.array(intentDeployPlanSchema).max(12).optional(),
+  sampleQueries: z.array(z.string()).min(8).max(15).optional(),
 });
 
 const META_XML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -84,6 +85,22 @@ RESPONSE STYLE:
 - After each completed tool action, summarize result and next action.
 - If uncertain, say what is unknown and what you need next.
 `;
+}
+
+function buildDefaultSampleQueries(agentName: string, skillNames: string[]): string[] {
+  const queries: string[] = [
+    "Hi, what can you do?",
+    `What skills does ${agentName} have?`,
+  ];
+  for (const skill of skillNames.slice(0, 6)) {
+    const readable = skill.replace(/_/g, " ");
+    queries.push(`Can you ${readable}?`);
+  }
+  queries.push(
+    "What happens if I give you wrong input?",
+    "Can you help me with something outside your scope?"
+  );
+  return queries.slice(0, 10);
 }
 
 function validateSystemPromptQuality(systemPrompt: string): string | null {
@@ -266,6 +283,8 @@ intentsConfigMd: markdown, include greeting and out_of_scope intents at minimum.
 
 fullConfigStubApex: optional Apex snippet as string with String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}'; and TODO comments.
 
+sampleQueries: array of 10 example questions a user can ask this agent after deploy. Mix skill-based queries (triggering handler tools), intent-based queries (triggering intent actions), greetings, and edge cases.
+
 EXAMPLES (follow these patterns exactly):
 1) Handler branch pattern:
 global String executeMethod(String requestParam, Map<String, Object> parameters) {
@@ -443,6 +462,9 @@ and explicitly state "Never claim success without tool JSON showing success=true
         d.fullConfigStubApex ??
         `String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}';\n// TODO: intent rows`,
       intentDeployPlan,
+      sampleQueries: d.sampleQueries?.length
+        ? d.sampleQueries
+        : buildDefaultSampleQueries(params.agentName, skillNames),
     };
 
     return { ok: true, bundle };

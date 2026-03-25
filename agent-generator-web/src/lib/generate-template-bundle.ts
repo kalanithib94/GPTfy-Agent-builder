@@ -205,5 +205,13 @@ Namespace: package subscribers use \`ccai__\` / \`ccai_qa__\` on objects; unpack
       params.agentDeveloperName,
       params.agentName
     ),
+    sampleQueries: [
+      "Hi, what can you do?",
+      "Run a health check on the integration.",
+      "What skills are available?",
+      "Can you create a record for me?",
+      "What happens if I give you wrong input?",
+      "Help me with something outside your scope.",
+    ],
   };
 }
