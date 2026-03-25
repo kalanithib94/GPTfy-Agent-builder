@@ -119,6 +119,44 @@ function validateSystemPromptQuality(systemPrompt: string): string | null {
   return null;
 }
 
+const DISALLOWED_REQUIRED_SKILL_FIELDS = new Set([
+  "ownerid",
+  "createdbyid",
+  "lastmodifiedbyid",
+  "lastmodifieddate",
+  "createddate",
+  "isdeleted",
+  "systemmodstamp",
+  "id",
+]);
+
+function sanitizePromptCommandContent(content: string): string {
+  try {
+    const parsed = JSON.parse(content) as {
+      properties?: Record<string, { description?: string }>;
+      required?: string[];
+      [k: string]: unknown;
+    };
+    if (!parsed || typeof parsed !== "object") return content;
+    const props = parsed.properties ?? {};
+    const required = Array.isArray(parsed.required) ? parsed.required : [];
+    const cleanedRequired = required.filter((key) => {
+      const k = String(key ?? "").trim();
+      if (!k) return false;
+      const norm = normalizeKey(k);
+      if (DISALLOWED_REQUIRED_SKILL_FIELDS.has(norm)) return false;
+      if (!Object.prototype.hasOwnProperty.call(props, k)) return false;
+      const desc = String(props[k]?.description ?? "").toLowerCase();
+      if (/\boptional\b|\bnot required\b/.test(desc)) return false;
+      return true;
+    });
+    parsed.required = Array.from(new Set(cleanedRequired));
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return content;
+  }
+}
+
 function isCannedActionType(v: string | undefined): boolean {
   return (v ?? "").trim().toLowerCase() === "canned response";
 }
@@ -501,6 +539,9 @@ agentSystemPrompt quality requirements:
 
 promptCommands: array of { "fileName": "my_skill_PromptCommand.json", "content": "<pretty-printed JSON schema string>" }
 - JSON schema: type object, properties with descriptions starting with "ONLY the" where applicable, required array.
+- In required[], include ONLY truly user-supplied mandatory inputs for that skill.
+- Do NOT include system-managed fields in required[] (especially OwnerId, CreatedById, LastModifiedById, Id).
+- If OwnerId is needed, default server-side or infer context; do not force user to provide it in prompt command.
 
 intentsConfigMd: markdown, include greeting and out_of_scope intents at minimum.
 
@@ -648,6 +689,10 @@ and explicitly state "Never claim success without tool JSON showing success=true
     }
 
     const d = shape.data;
+    const sanitizedPromptCommands = d.promptCommands.map((pc) => ({
+      ...pc,
+      content: sanitizePromptCommandContent(pc.content),
+    }));
     const handlerErr = validateHandlerApex(
       d.handlerApex,
       params.handlerClass,
@@ -657,7 +702,9 @@ and explicitly state "Never claim success without tool JSON showing success=true
       return { ok: false, error: `Invalid handlerApex: ${handlerErr}` };
     }
 
-    const skillNames = d.promptCommands.map((pc) => promptStemFromFileName(pc.fileName)).filter(Boolean);
+    const skillNames = sanitizedPromptCommands
+      .map((pc) => promptStemFromFileName(pc.fileName))
+      .filter(Boolean);
     const intentDeployPlanDraft = ensureIntentActionDiversity(
       d.intentDeployPlan,
       params.handlerClass
@@ -682,7 +729,7 @@ and explicitly state "Never claim success without tool JSON showing success=true
       agentDescription: d.agentDescription,
       agentSystemPrompt: finalSystemPrompt,
       intentsConfigMd: d.intentsConfigMd,
-      promptCommands: d.promptCommands,
+      promptCommands: sanitizedPromptCommands,
       specMarkdown:
         d.specMarkdown ??
         `# ${params.agentName}\n\nAI-generated bundle. Deploy handler then run pipeline.`,
