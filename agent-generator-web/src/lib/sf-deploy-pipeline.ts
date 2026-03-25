@@ -73,7 +73,17 @@ async function runQuery(
 ): Promise<Record<string, unknown>[]> {
   const path = `query?q=${encodeURIComponent(q)}`;
   const r = await sfDataFetch(instanceUrl, accessToken, path);
-  if (!r.ok || !r.json || typeof r.json !== "object") return [];
+  if (!r.ok) {
+    throw new Error(`SOQL failed: ${r.text.slice(0, 500)}`);
+  }
+  if (!r.json || typeof r.json !== "object") return [];
+  // Salesforce query errors often come back as an array of { message, errorCode }.
+  if (Array.isArray(r.json) && r.json.length > 0) {
+    const first = r.json[0] as { message?: unknown };
+    if (typeof first?.message === "string") {
+      throw new Error(`SOQL failed: ${first.message}`);
+    }
+  }
   const recs = (r.json as { records?: Record<string, unknown>[] }).records;
   return Array.isArray(recs) ? recs : [];
 }
@@ -151,16 +161,18 @@ export async function deployBundleToConnectedOrg(
 
     const pDesc = await describeSObject(instanceUrl, token, API_VER, promptApi);
     const aDesc = await describeSObject(instanceUrl, token, API_VER, agentApi);
+    const cDesc = await describeSObject(instanceUrl, token, API_VER, connApi);
     const skDesc = await describeSObject(instanceUrl, token, API_VER, skillApi);
     const iDesc = await describeSObject(instanceUrl, token, API_VER, intentApi);
     const actDesc = await describeSObject(instanceUrl, token, API_VER, actionApi);
     const dDesc = await describeSObject(instanceUrl, token, API_VER, detailApi);
 
-    if (!pDesc.ok || !aDesc.ok || !skDesc.ok || !iDesc.ok || !actDesc.ok || !dDesc.ok) {
+    if (!pDesc.ok || !aDesc.ok || !cDesc.ok || !skDesc.ok || !iDesc.ok || !actDesc.ok || !dDesc.ok) {
       throw new Error("Describe failed for one or more GPTfy objects");
     }
 
     const pf = pDesc.body.fields;
+    const cf = cDesc.body.fields;
     const skf = skDesc.body.fields;
     const skillAgentFld = pickField(skf, "AI_Agent__c");
     const skillPromptFld = pickField(skf, "AI_Prompt__c");
@@ -179,6 +191,7 @@ export async function deployBundleToConnectedOrg(
     const fMap = pickField(pf, "AI_Data_Extraction_Mapping__c");
     const fType = pickField(pf, "Type__c");
     const fStat = pickField(pf, "Status__c");
+    const fConnType = pickField(cf, "Type__c");
 
     const fDev = pickField(af, "Developer_Name__c");
     const fModel = pickField(af, "AI_Model__c");
@@ -211,6 +224,9 @@ export async function deployBundleToConnectedOrg(
       throw new Error(
         `Missing AI_Prompt__c fields for deploy: ${requiredPrompt.map((x) => x ?? "?").join(", ")}`
       );
+    }
+    if (!fConnType) {
+      throw new Error("Missing AI_Connection__c field: Type__c");
     }
 
     const meta = await deployApexClassMetadata(
@@ -252,14 +268,14 @@ export async function deployBundleToConnectedOrg(
     let rows = await runQuery(
       instanceUrl,
       token,
-      `SELECT Id FROM ${connApi} WHERE Type__c = 'Agentic' AND Name = '${soqlEscape(pref)}' LIMIT 1`
+      `SELECT Id FROM ${connApi} WHERE ${fConnType} = 'Agentic' AND Name = '${soqlEscape(pref)}' LIMIT 1`
     );
     if (rows[0]?.Id) agentModelId = String(rows[0].Id);
     if (!agentModelId) {
       rows = await runQuery(
         instanceUrl,
         token,
-        `SELECT Id FROM ${connApi} WHERE Type__c = 'Agentic' ORDER BY LastModifiedDate DESC LIMIT 1`
+        `SELECT Id FROM ${connApi} WHERE ${fConnType} = 'Agentic' ORDER BY LastModifiedDate DESC LIMIT 1`
       );
       if (rows[0]?.Id) agentModelId = String(rows[0].Id);
     }

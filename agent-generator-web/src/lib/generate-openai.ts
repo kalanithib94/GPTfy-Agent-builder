@@ -41,6 +41,65 @@ type GenerateWithOpenAIOptions = {
   retryNotes?: string;
 };
 
+function promptStemFromFileName(fileName: string): string {
+  const base = fileName.replace(/\.json$/i, "");
+  return base.replace(/(_prompt)?command$/i, "").replace(/_+$/, "").trim();
+}
+
+function buildHighQualitySystemPrompt(
+  agentName: string,
+  useCase: string,
+  notes: string | undefined,
+  skillNames: string[]
+): string {
+  const skills = skillNames.length ? skillNames.join(", ") : "health_Check_Agent";
+  return `You are ${agentName}, a Salesforce-first assistant.
+
+CORE RESPONSIBILITIES:
+- Execute this use case accurately and safely:
+${useCase}
+${notes?.trim() ? `\nBUSINESS NOTES:\n${notes.trim()}\n` : ""}
+- Keep responses concise, factual, and action-oriented.
+
+TOOL USAGE RULES (MANDATORY):
+- For ANY Salesforce read/write operation, call the appropriate tool first.
+- Never claim success unless tool JSON includes success=true.
+- If a required parameter is missing, ask one focused follow-up question.
+- Available skills in this build: ${skills}
+
+SAFETY AND DATA INTEGRITY:
+- Do not fabricate records, IDs, statuses, or outcomes.
+- Do not perform destructive changes unless explicitly asked and authorized.
+- If tool output indicates failure, explain the failure and next corrective step.
+
+ERROR-HANDLING POLICY:
+- If a tool returns validation errors, surface them clearly.
+- If no matching record is found, state that explicitly and suggest a narrower query.
+- If access is denied, tell the user they may need Salesforce permissions.
+
+RESPONSE STYLE:
+- Use plain language with short sections.
+- After each completed tool action, summarize result and next action.
+- If uncertain, say what is unknown and what you need next.
+`;
+}
+
+function validateSystemPromptQuality(systemPrompt: string): string | null {
+  const p = systemPrompt.trim();
+  if (p.length < 500) return "agentSystemPrompt too short; expected detailed operating policy";
+  const mustContain = [
+    /tool/i,
+    /never claim success/i,
+    /salesforce/i,
+    /error/i,
+    /responsibilit/i,
+  ];
+  if (mustContain.some((re) => !re.test(p))) {
+    return "agentSystemPrompt missing critical behavioral sections";
+  }
+  return null;
+}
+
 export async function generateWithOpenAI(
   apiKey: string,
   params: GeneratedBundle["parameters"],
@@ -75,6 +134,19 @@ export async function generateWithOpenAI(
     if (!/global\s+String\s+executeMethod\s*\(/.test(apex)) {
       return "missing required global executeMethod signature";
     }
+    if (!/if\s*\(\s*parameters\s*==\s*null\s*\)/.test(apex)) {
+      return "executeMethod must guard for null parameters";
+    }
+    if (!/private\s+String\s+err\s*\(/.test(apex) || !/private\s+String\s+ok\s*\(/.test(apex)) {
+      return "missing private err/ok helper methods";
+    }
+    // Enforce maintainability: keep skill logic in private helper methods, not giant switch branches.
+    if (!/private\s+String\s+[A-Za-z0-9_]+\s*\(\s*Map<\s*String\s*,\s*Object\s*>\s+[A-Za-z0-9_]+\s*\)/.test(apex)) {
+      return "missing private skill helper methods (Map<String, Object> parameters)";
+    }
+    if (!/catch\s*\(\s*Exception\b/.test(apex)) {
+      return "missing exception handling";
+    }
     if (!/switch\s+on\s+requestParam\s*\{/.test(apex)) {
       return "missing required switch on requestParam block";
     }
@@ -92,6 +164,14 @@ export async function generateWithOpenAI(
     // Guard against Java-style switch syntax that breaks Apex.
     if (/case\s+'[^']+'\s*:/.test(apex) || /\bcase\s+[A-Za-z0-9_]+\s*:/.test(apex)) {
       return "invalid Apex switch syntax (case:) — use switch on ... when ... { }";
+    }
+    // SOQL assignment with LIMIT 1 throws QueryException when no rows; null check afterward is ineffective.
+    if (
+      /=\s*\[\s*SELECT[\s\S]{0,300}?LIMIT\s+1\s*\];\s*if\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*==\s*null\s*\)/.test(
+        apex
+      )
+    ) {
+      return "invalid single-row SOQL null-check pattern; use list query + isEmpty()";
     }
     if (expectedClass.length > 40) {
       return "handler class name exceeds Apex 40 char limit";
@@ -114,13 +194,20 @@ handlerApex requirements:
 - Method: global String executeMethod(String requestParam, Map<String, Object> parameters)
 - switch on requestParam — each when value MUST match the skill name used in promptCommands file names (stem before _PromptCommand.json per Deploy-GptfyUseCasePipeline.ps1)
 - private helpers err(String), ok(Map) returning JSON.serialize with success/status/message pattern
+- if parameters == null, initialize new Map<String, Object>()
 - System.debug(LoggingLevel.ERROR, 'PREFIX | ...') for diagnostics; never use variable name desc
 - CRUD checks via Schema.sObjectType or isAccessible/isCreateable as appropriate
 - with sharing
 - NEVER output Java-style "case ...:" syntax; Apex must use "switch on ... { when ... { ... } when else { ... } }".
 - Ensure switch on requestParam includes at least one concrete when branch and a when else branch that returns String.
+- For "find by Id" queries, do NOT use "SObject x = [SELECT ... LIMIT 1]; if (x == null)". Use list query + isEmpty() and return friendly error when not found.
+- Validate required input parameters in each skill and return err(...) when missing.
+- Keep each skill branch small by delegating to private helper methods (e.g., handleFindOpportunity(parameters)).
 
-agentSystemPrompt: MUST state tools must be called for any Salesforce operation; never claim success without tool JSON showing success.
+agentSystemPrompt quality requirements:
+- Minimum 500 characters, with explicit sections for responsibilities, tool usage, safety, error handling, and response style.
+- MUST state tools must be called for any Salesforce operation; never claim success without tool JSON showing success.
+- MUST explain what to do when record not found / permission denied / invalid input.
 
 promptCommands: array of { "fileName": "my_skill_PromptCommand.json", "content": "<pretty-printed JSON schema string>" }
 - JSON schema: type object, properties with descriptions starting with "ONLY the" where applicable, required array.
@@ -234,6 +321,13 @@ fullConfigStubApex: optional Apex snippet as string with String targetAgentName 
       return { ok: false, error: `Invalid handlerApex: ${handlerErr}` };
     }
 
+    const skillNames = d.promptCommands.map((pc) => promptStemFromFileName(pc.fileName)).filter(Boolean);
+    const systemPromptErr = validateSystemPromptQuality(d.agentSystemPrompt);
+    const finalSystemPrompt =
+      systemPromptErr ?
+        buildHighQualitySystemPrompt(params.agentName, useCase, notes, skillNames)
+      : d.agentSystemPrompt;
+
     const bundle: GeneratedBundle = {
       version: 1,
       source: "openai",
@@ -241,7 +335,7 @@ fullConfigStubApex: optional Apex snippet as string with String targetAgentName 
       handlerApex: d.handlerApex,
       handlerMetaXml: META_XML,
       agentDescription: d.agentDescription,
-      agentSystemPrompt: d.agentSystemPrompt,
+      agentSystemPrompt: finalSystemPrompt,
       intentsConfigMd: d.intentsConfigMd,
       promptCommands: d.promptCommands,
       specMarkdown:
