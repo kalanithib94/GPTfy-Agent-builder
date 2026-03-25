@@ -79,6 +79,26 @@ function normalizePicklistValue(input: string | undefined, allowed: string[]): s
   return fuzzy ?? null;
 }
 
+function coerceActionType(raw: string | undefined, allowed: string[]): string {
+  const normalized = normalizePicklistValue(raw, allowed);
+  if (normalized) return normalized;
+  if (!allowed.length) return raw?.trim() || "Apex";
+  const key = lower(raw);
+  const candidates: Record<string, string[]> = {
+    "canned response": ["Canned Response"],
+    "create record": ["Create Record"],
+    "update field": ["Update Field"],
+    apex: ["Apex"],
+    flow: ["Flow"],
+    "invoke agent": ["Invoke Agent"],
+  };
+  for (const preferred of candidates[key] ?? []) {
+    const mapped = normalizePicklistValue(preferred, allowed);
+    if (mapped) return mapped;
+  }
+  return allowed[0];
+}
+
 function resolveFieldApiName(fields: DescribeField[], requested: string): string | null {
   const raw = requested.trim();
   if (!raw) return null;
@@ -419,9 +439,13 @@ export async function deployBundleToConnectedOrg(
     const fActDesc = pickFieldAny(actf, ["Description__c", "Action_Description__c"]);
     const fActActive = pickFieldAny(actf, ["Is_Active__c", "Active__c"]);
     const fLang = pickField(actf, "Language__c");
-    const fCanned = pickFieldAny(actf, ["Canned_Response_Text__c", "Canned_Response__c"]);
-    const fObj = pickFieldAny(actf, ["Object_API_Name__c", "Object_Name__c"]);
-    const fFlow = pickFieldAny(actf, ["Flow_API_Name__c", "Flow_Name__c"]);
+    const fCanned = pickFieldAny(actf, [
+      "Canned_Response_Text__c",
+      "Canned_Response__c",
+      "Response_Text__c",
+    ]);
+    const fObj = pickFieldAny(actf, ["Object_API_Name__c", "Object_Name__c", "Object__c"]);
+    const fFlow = pickFieldAny(actf, ["Flow_API_Name__c", "Flow_Name__c", "Flow__c"]);
     const fApex = pickFieldAny(actf, ["Apex_Class_Name__c", "Apex_Class__c"]);
     const fApexRet = pickFieldAny(actf, ["Apex_Return_Type__c", "Return_Type__c"]);
     const actionTypePicklist = picklistValuesBySuffix(actf, "Action_Type__c");
@@ -896,9 +920,7 @@ export async function deployBundleToConnectedOrg(
         const actBody: Record<string, unknown> = {
           [fActIntent!]: intentId,
         };
-        const normalizedActionType =
-          normalizePicklistValue(act.actionType, actionTypePicklist) ??
-          act.actionType;
+        const normalizedActionType = coerceActionType(act.actionType, actionTypePicklist);
         const actionTypeKey = lower(normalizedActionType);
         if (fActSeq) actBody[fActSeq] = act.seq;
         if (fActType) actBody[fActType] = normalizedActionType;
@@ -926,12 +948,19 @@ export async function deployBundleToConnectedOrg(
         }
         const isCreateOrUpdate = actionTypeKey === "create record" || actionTypeKey === "update field";
         if (isCreateOrUpdate && !act.objectApiName) {
-          pushErr(`Action for ${plan.name}: ${normalizedActionType} missing objectApiName`);
-          continue;
+          act.objectApiName = actionTypeKey === "create record" ? "Task" : "Opportunity";
         }
         if (isCreateOrUpdate && (!act.details || act.details.length === 0)) {
-          pushErr(`Action for ${plan.name}: ${normalizedActionType} missing detail mappings`);
-          continue;
+          act.details =
+            actionTypeKey === "create record"
+              ? [
+                  { fieldApiName: "Subject", type: "AI Extracted", valueOrInstruction: "Extract a concise task subject from user request." },
+                  { fieldApiName: "Status", type: "Hardcoded", valueOrInstruction: "Not Started" },
+                  { fieldApiName: "Priority", type: "Hardcoded", valueOrInstruction: "Normal" },
+                ]
+              : [
+                  { fieldApiName: "StageName", type: "AI Extracted", valueOrInstruction: "Extract target stage from user request." },
+                ];
         }
         let normalizedDetails = act.details;
         if (isCreateOrUpdate && act.objectApiName) {
@@ -1045,6 +1074,11 @@ export async function deployBundleToConnectedOrg(
       errors.length === 0 || intentsCreated > 0,
       errors.length ? "Some rows may have failed — see errors" : undefined
     );
+
+    if (errors.length > 0) {
+      addStep("Publish AI_Agent__c (Active)", false, "Skipped due to intent/action errors");
+      return { ok: false, steps, errors };
+    }
 
     await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
       method: "PATCH",
