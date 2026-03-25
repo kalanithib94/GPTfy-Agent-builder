@@ -38,13 +38,15 @@ export default async function ConnectPage({ searchParams }: Props) {
 
   return (
     <div className="space-y-8 max-w-4xl">
-      <div>
-        <p className="mb-1 text-xs font-medium uppercase tracking-wider text-cyan-400/80">Salesforce</p>
-        <h1 className="text-2xl font-bold text-white sm:text-3xl">Connect org</h1>
-        <p className="mt-2 text-neutral-400">Use this two-step flow: save this org&apos;s app settings, then click Production/Sandbox.</p>
+      <div className="hero-card">
+        <p className="mb-1 text-xs font-medium uppercase tracking-wider text-cyan-300/85">Salesforce</p>
+        <h1 className="text-2xl font-bold text-white sm:text-3xl">Connect your org in 2 steps</h1>
+        <p className="mt-2 text-sm text-neutral-300">
+          Save this org&apos;s client settings, then connect with secure browser OAuth.
+        </p>
       </div>
 
-      <div className="card border-cyan-500/25 bg-cyan-950/15 space-y-2">
+      <div className="glass-section border-cyan-500/25 bg-cyan-950/15 space-y-2">
         <p className="text-sm font-semibold text-cyan-100">Recommended flow (works for most orgs)</p>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-cyan-100/90 marker:text-cyan-300">
           <li>Paste this org&apos;s client settings and click <strong>Save for this browser</strong>.</li>
@@ -85,10 +87,10 @@ export default async function ConnectPage({ searchParams }: Props) {
       </div>
 
       {friendlyError ? (
-        <div className="card-muted border-red-500/30 text-sm text-red-100/95 break-words">{friendlyError}</div>
+        <div className="glass-section border-red-500/30 text-sm text-red-100/95 break-words">{friendlyError}</div>
       ) : null}
 
-      <div className="card space-y-6">
+      <div className="glass-section space-y-6">
         <div>
           <ConnectClientConfigForm
             suggestedCallback={suggestedCallback}
@@ -110,7 +112,7 @@ export default async function ConnectPage({ searchParams }: Props) {
         </div>
       </div>
 
-      <div className="card-muted space-y-4">
+      <div className="glass-section space-y-4">
         <h2 className="text-sm font-semibold text-neutral-200">Connected App callback URL</h2>
         <p className="text-sm text-neutral-500">
           Paste this exact URL into your Salesforce Connected App (OAuth).{" "}

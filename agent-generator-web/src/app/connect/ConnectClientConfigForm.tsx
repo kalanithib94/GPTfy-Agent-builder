@@ -48,7 +48,7 @@ export function ConnectClientConfigForm({ suggestedCallback, usingSessionConfig 
   }
 
   return (
-    <div className="card-muted space-y-4">
+    <div className="glass-section space-y-4">
       <h2 className="text-sm font-semibold text-neutral-200">Step 1: paste this org&apos;s External Client App</h2>
       <p className="text-xs text-neutral-500">
         Paste Client ID, Client Secret, and Callback URL from the target org. Stored encrypted in your session cookie
