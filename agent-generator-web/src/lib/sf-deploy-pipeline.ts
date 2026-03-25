@@ -6,9 +6,11 @@ import {
   type DescribeField,
 } from "./gptfy-metadata";
 import { defaultIntentDeployPlan, type IntentDeployPlan } from "./intent-deploy-types";
-import { deployApexClassMetadata } from "./sf-metadata-deploy";
+import { deployApexClassMetadata, deployFlowMetadata } from "./sf-metadata-deploy";
 import { refreshSalesforceAccessToken } from "./sf-token-refresh";
 import type { SfSessionData } from "./session";
+import { readFile } from "fs/promises";
+import path from "path";
 
 const API_VER = "v59.0";
 
@@ -40,6 +42,60 @@ function truncateName(s: string, max: number): string {
 
 function lower(v: string | undefined): string {
   return (v ?? "").trim().toLowerCase();
+}
+
+function resolveIntentActionInterfaceSymbol(gptfyNamespace?: string): string {
+  const raw = gptfyNamespace?.trim();
+  if (!raw) return "AIIntentActionInterface";
+  const noSuffix = raw.replace(/__$/, "");
+  if (!noSuffix) return "AIIntentActionInterface";
+  return `${noSuffix}.AIIntentActionInterface`;
+}
+
+function sanitizeApexClassName(raw: string, fallback = "GeneratedIntentAction"): string {
+  let s = (raw || "").replace(/[^A-Za-z0-9_]/g, "");
+  if (!s) s = fallback;
+  if (!/^[A-Za-z]/.test(s)) s = `A${s}`;
+  if (s.length > 40) s = s.slice(0, 40);
+  return s;
+}
+
+function buildIntentActionApexStub(
+  className: string,
+  gptfyNamespace: string | undefined,
+  purpose: string
+): { body: string; metaXml: string } {
+  const iface = resolveIntentActionInterfaceSymbol(gptfyNamespace);
+  const escapedPurpose = purpose.replace(/'/g, "\\'");
+  const metaXml = `<?xml version="1.0" encoding="UTF-8"?>
+<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>59.0</apiVersion>
+    <status>Active</status>
+</ApexClass>
+`;
+  const body = `global with sharing class ${className} implements ${iface} {
+    global Map<String, Object> invokeApex(Map<String, Object> request) {
+        return new Map<String, Object>{
+            'success' => false,
+            'status' => 'not_configured',
+            'message' => 'Auto-generated placeholder action class. Please implement business logic.',
+            'purpose' => '${escapedPurpose}'
+        };
+    }
+}`;
+  return { body, metaXml };
+}
+
+function buildNoopAutolaunchedFlowMeta(flowApiName: string): string {
+  const label = flowApiName.replace(/_/g, " ").trim() || flowApiName;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>59.0</apiVersion>
+    <label>${label}</label>
+    <processType>AutoLaunchedFlow</processType>
+    <status>Active</status>
+</Flow>
+`;
 }
 
 async function sfDataFetch(
@@ -423,10 +479,11 @@ export async function deployBundleToConnectedOrg(
     }
     addStep("Activate AI_Prompt__c records", true);
 
-    // Validate action dependencies before creating intent/action rows or publishing the agent.
+    // Auto-provision dependencies used by intent actions before creating rows/publishing.
     const referencedApex = new Set<string>();
     const referencedFlows = new Set<string>();
-    const dependencyErrors: string[] = [];
+    const provisionErrors: string[] = [];
+    const provisionNotes: string[] = [];
 
     for (const plan of plans) {
       for (const act of plan.actions) {
@@ -434,19 +491,26 @@ export async function deployBundleToConnectedOrg(
         if (kind === "apex") {
           const cls = (act.apexClass ?? "").trim();
           if (!cls) {
-            dependencyErrors.push(
-              `Intent ${plan.name}: Apex action missing apexClass`
-            );
+            const generated = sanitizeApexClassName(`${plan.name}_IntentAction`);
+            act.apexClass = generated;
+            act.apexReturnType = "String";
+            provisionNotes.push(`Intent ${plan.name}: generated missing apexClass ${generated}`);
+            referencedApex.add(generated);
           } else {
             referencedApex.add(cls);
           }
-        }
-        if (kind === "flow") {
+        } else if (kind === "flow") {
           const flow = (act.flowApiName ?? "").trim();
           if (!flow) {
-            dependencyErrors.push(
-              `Intent ${plan.name}: Flow action missing flowApiName`
+            const generated = sanitizeApexClassName(`${plan.name}_FlowFallbackAction`);
+            act.actionType = "Apex";
+            act.apexClass = generated;
+            act.apexReturnType = "String";
+            act.flowApiName = undefined;
+            provisionNotes.push(
+              `Intent ${plan.name}: missing flowApiName, converted action to Apex ${generated}`
             );
+            referencedApex.add(generated);
           } else {
             referencedFlows.add(flow);
           }
@@ -457,46 +521,129 @@ export async function deployBundleToConnectedOrg(
     for (const cls of Array.from(referencedApex)) {
       // Handler class was just deployed in this pipeline; skip redundant lookup for that one.
       if (cls === bundle.parameters.handlerClass) continue;
-      const rows = await runQuery(
+      let rows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ApexClass WHERE Name = '${soqlEscape(cls)}' LIMIT 1`
+      );
+      if (rows[0]?.Id) continue;
+
+      const stub = buildIntentActionApexStub(
+        cls,
+        session.gptfyNamespace,
+        "Auto-provisioned for intent action dependency"
+      );
+      const dep = await deployApexClassMetadata(
+        instanceUrl,
+        token,
+        cls,
+        stub.body,
+        stub.metaXml
+      );
+      if (!dep.ok) {
+        provisionErrors.push(`Could not auto-create Apex dependency ${cls}: ${dep.message}`);
+        continue;
+      }
+      rows = await runQuery(
         instanceUrl,
         token,
         `SELECT Id FROM ApexClass WHERE Name = '${soqlEscape(cls)}' LIMIT 1`
       );
       if (!rows[0]?.Id) {
-        dependencyErrors.push(
-          `Referenced Apex class not found: ${cls}`
-        );
+        provisionErrors.push(`Apex dependency ${cls} still missing after deploy`);
+      } else {
+        provisionNotes.push(`Auto-created Apex dependency: ${cls}`);
       }
     }
 
     for (const flow of Array.from(referencedFlows)) {
-      const rows = await runQuery(
+      let rows = await runQuery(
         instanceUrl,
         token,
         `SELECT Id, ActiveVersionId FROM FlowDefinition WHERE DeveloperName = '${soqlEscape(flow)}' LIMIT 1`
       );
-      if (!rows[0]?.Id) {
-        dependencyErrors.push(`Referenced Flow not found: ${flow}`);
+      const existsAndActive = Boolean(rows[0]?.Id && rows[0]?.ActiveVersionId);
+      if (existsAndActive) continue;
+
+      const candidates = [
+        path.join(process.cwd(), "force-app", "main", "default", "flows", `${flow}.flow-meta.xml`),
+        path.join(process.cwd(), "..", "force-app", "main", "default", "flows", `${flow}.flow-meta.xml`),
+      ];
+      let flowMeta = "";
+      for (const p of candidates) {
+        try {
+          flowMeta = await readFile(p, "utf8");
+          if (flowMeta.trim()) break;
+        } catch {
+          // continue
+        }
+      }
+      if (!flowMeta.trim()) {
+        flowMeta = buildNoopAutolaunchedFlowMeta(flow);
+      }
+      const dep = await deployFlowMetadata(instanceUrl, token, flow, flowMeta);
+      if (!dep.ok) {
+        provisionErrors.push(`Could not auto-create/activate Flow dependency ${flow}: ${dep.message}`);
         continue;
       }
-      if (!rows[0]?.ActiveVersionId) {
-        dependencyErrors.push(`Referenced Flow has no active version: ${flow}`);
+
+      rows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id, ActiveVersionId FROM FlowDefinition WHERE DeveloperName = '${soqlEscape(flow)}' LIMIT 1`
+      );
+      if (!rows[0]?.Id || !rows[0]?.ActiveVersionId) {
+        // Fall back by converting flow actions to Apex placeholder.
+        const fallback = sanitizeApexClassName(`${flow}_FlowFallbackAction`);
+        const stub = buildIntentActionApexStub(
+          fallback,
+          session.gptfyNamespace,
+          `Fallback for missing/inactive flow ${flow}`
+        );
+        const depApex = await deployApexClassMetadata(
+          instanceUrl,
+          token,
+          fallback,
+          stub.body,
+          stub.metaXml
+        );
+        if (!depApex.ok) {
+          provisionErrors.push(
+            `Flow ${flow} unavailable and fallback Apex creation failed: ${depApex.message}`
+          );
+          continue;
+        }
+        for (const plan of plans) {
+          for (const act of plan.actions) {
+            if (lower(act.actionType) === "flow" && (act.flowApiName ?? "").trim() === flow) {
+              act.actionType = "Apex";
+              act.apexClass = fallback;
+              act.apexReturnType = "String";
+              act.flowApiName = undefined;
+            }
+          }
+        }
+        provisionNotes.push(
+          `Flow ${flow} unavailable after deploy; converted related actions to Apex fallback ${fallback}`
+        );
+      } else {
+        provisionNotes.push(`Auto-created/activated Flow dependency: ${flow}`);
       }
     }
 
-    if (dependencyErrors.length > 0) {
-      for (const e of dependencyErrors) pushErr(e);
+    if (provisionErrors.length > 0) {
+      for (const e of provisionErrors) pushErr(e);
       addStep(
-        "Validate Apex/Flow dependencies",
+        "Provision Apex/Flow dependencies",
         false,
-        `${dependencyErrors.length} missing dependency issue(s)`
+        `${provisionErrors.length} dependency issue(s)`
       );
       return { ok: false, steps, errors };
     }
     addStep(
-      "Validate Apex/Flow dependencies",
+      "Provision Apex/Flow dependencies",
       true,
-      `apex=${referencedApex.size}, flow=${referencedFlows.size}`
+      `apex=${referencedApex.size}, flow=${referencedFlows.size}${provisionNotes.length ? `, notes=${provisionNotes.length}` : ""}`
     );
 
     const existingNames = new Set(
