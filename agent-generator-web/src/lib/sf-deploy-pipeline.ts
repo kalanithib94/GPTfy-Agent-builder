@@ -71,6 +71,31 @@ function normalizePicklistValue(input: string | undefined, allowed: string[]): s
   return fuzzy ?? null;
 }
 
+function resolveFieldApiName(fields: DescribeField[], requested: string): string | null {
+  const raw = requested.trim();
+  if (!raw) return null;
+  const exact = fields.find((f) => f.name === raw);
+  if (exact?.name) return exact.name;
+  const ci = fields.find((f) => f.name.toLowerCase() === raw.toLowerCase());
+  if (ci?.name) return ci.name;
+  const suffix = raw.includes(".") ? raw.split(".").pop() ?? raw : raw;
+  const bySuffix = fields.find((f) => fieldSuffixMatches(f.name, suffix));
+  return bySuffix?.name ?? null;
+}
+
+function picklistValuesForField(fields: DescribeField[], fieldApiName: string): string[] {
+  const f = fields.find((x) => x.name === fieldApiName) as
+    | (DescribeField & {
+        picklistValues?: { value?: string; active?: boolean }[];
+      })
+    | undefined;
+  const vals = f?.picklistValues;
+  if (!Array.isArray(vals)) return [];
+  return vals
+    .filter((v) => v && (v.active ?? true) && typeof v.value === "string")
+    .map((v) => String(v.value));
+}
+
 function resolveIntentActionInterfaceSymbol(gptfyNamespace?: string): string {
   const raw = gptfyNamespace?.trim();
   if (!raw) return "AIIntentActionInterface";
@@ -394,6 +419,7 @@ export async function deployBundleToConnectedOrg(
     const actionTypePicklist = picklistValuesBySuffix(actf, "Action_Type__c");
     const languagePicklist = picklistValuesBySuffix(actf, "Language__c");
     const apexReturnPicklist = picklistValuesBySuffix(actf, "Apex_Return_Type__c");
+    const objectDescribeCache = new Map<string, DescribeField[]>();
 
     const fDetAct = pickField(dtf, "AI_Intent_Action__c");
     const fDetField = pickField(dtf, "Field_API_Name__c");
@@ -857,6 +883,60 @@ export async function deployBundleToConnectedOrg(
           pushErr(`Action for ${plan.name}: ${normalizedActionType} missing detail mappings`);
           continue;
         }
+        let normalizedDetails = act.details;
+        if (isCreateOrUpdate && act.objectApiName) {
+          const objApi = act.objectApiName.trim();
+          let targetFields = objectDescribeCache.get(objApi);
+          if (!targetFields) {
+            const d = await describeSObject(instanceUrl, token, API_VER, objApi);
+            if (!d.ok) {
+              pushErr(
+                `Action for ${plan.name}: cannot describe object ${objApi} (${d.status})`
+              );
+              continue;
+            }
+            targetFields = d.body.fields;
+            objectDescribeCache.set(objApi, targetFields);
+          }
+          const nextDetails: typeof act.details = [];
+          let invalidDetail = false;
+          for (const detail of act.details ?? []) {
+            const resolvedField = resolveFieldApiName(
+              targetFields,
+              detail.fieldApiName
+            );
+            if (!resolvedField) {
+              pushErr(
+                `Action for ${plan.name}: field ${detail.fieldApiName} not found on ${objApi}`
+              );
+              invalidDetail = true;
+              break;
+            }
+            let normalizedVal = detail.valueOrInstruction;
+            const detailType = lower(detail.type);
+            if (detailType === "hardcoded" && normalizedVal) {
+              const pickVals = picklistValuesForField(targetFields, resolvedField);
+              if (pickVals.length > 0) {
+                const mapped = normalizePicklistValue(normalizedVal, pickVals);
+                if (!mapped) {
+                  pushErr(
+                    `Action for ${plan.name}: invalid picklist value "${normalizedVal}" for ${objApi}.${resolvedField}`
+                  );
+                  invalidDetail = true;
+                  break;
+                }
+                normalizedVal = mapped;
+              }
+            }
+            nextDetails.push({
+              ...detail,
+              fieldApiName: resolvedField,
+              valueOrInstruction: normalizedVal,
+            });
+          }
+          if (invalidDetail) continue;
+          normalizedDetails = nextDetails;
+        }
         if (fObj && act.objectApiName) actBody[fObj] = act.objectApiName;
         if (fFlow && act.flowApiName) actBody[fFlow] = act.flowApiName;
         if (fApex && act.apexClass) actBody[fApex] = act.apexClass;
@@ -886,11 +966,11 @@ export async function deployBundleToConnectedOrg(
           continue;
         }
         const actionId = (ar.json as { id?: string })?.id;
-        if (!actionId || !act.details?.length) continue;
+        if (!actionId || !normalizedDetails?.length) continue;
 
         if (!fDetAct || !fDetField || !fDetType) continue;
 
-        for (const d of act.details) {
+        for (const d of normalizedDetails) {
           const db: Record<string, unknown> = {
             [fDetAct]: actionId,
             [fDetField]: d.fieldApiName,
