@@ -771,16 +771,46 @@ export async function deployBundleToConnectedOrg(
           })
         : null;
       const fallback = buildIntentActionApexStub(className, session.gptfyNamespace, purpose);
-      const dep = await deployApexClassMetadata(
-        instanceUrl,
-        token,
-        className,
-        aiBody ?? fallback.body,
-        fallback.metaXml
-      );
-      if (!dep.ok) {
-        provisionErrors.push(`Could not auto-create Apex dependency ${className}: ${dep.message}`);
-        return false;
+      // Try AI-generated class first (if available), then hard fallback stub if compile fails.
+      // This prevents org-specific field assumptions from blocking deploy.
+      if (aiBody) {
+        const aiDep = await deployApexClassMetadata(
+          instanceUrl,
+          token,
+          className,
+          aiBody,
+          fallback.metaXml
+        );
+        if (!aiDep.ok) {
+          provisionNotes.push(
+            `Apex dependency ${className}: AI class failed compile, using safe fallback stub`
+          );
+          const fbDep = await deployApexClassMetadata(
+            instanceUrl,
+            token,
+            className,
+            fallback.body,
+            fallback.metaXml
+          );
+          if (!fbDep.ok) {
+            provisionErrors.push(
+              `Could not auto-create Apex dependency ${className}: AI=${aiDep.message} | fallback=${fbDep.message}`
+            );
+            return false;
+          }
+        }
+      } else {
+        const dep = await deployApexClassMetadata(
+          instanceUrl,
+          token,
+          className,
+          fallback.body,
+          fallback.metaXml
+        );
+        if (!dep.ok) {
+          provisionErrors.push(`Could not auto-create Apex dependency ${className}: ${dep.message}`);
+          return false;
+        }
       }
       rows = await runQuery(
         instanceUrl,
