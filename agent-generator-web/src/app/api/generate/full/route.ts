@@ -56,7 +56,9 @@ export async function POST(request: Request) {
       bundle = ai.bundle;
     } else {
       warnings.push(`OpenAI failed (${ai.error}). Used template bundle instead.`);
-      bundle = buildTemplateBundle(params, p.useCase, p.notes);
+      bundle = buildTemplateBundle(params, p.useCase, p.notes, {
+        gptfyNamespace: session.gptfyNamespace,
+      });
     }
   } else {
     if (!p.useTemplateOnly && !openaiKey) {
@@ -64,7 +66,9 @@ export async function POST(request: Request) {
         "No OpenAI API key on the server — using built-in template. Set OPENAI_API_KEY on Vercel or save a key in /admin (Redis)."
       );
     }
-    bundle = buildTemplateBundle(params, p.useCase, p.notes);
+    bundle = buildTemplateBundle(params, p.useCase, p.notes, {
+      gptfyNamespace: session.gptfyNamespace,
+    });
   }
 
   if (!bundle.intentDeployPlan?.length) {

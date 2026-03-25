@@ -63,13 +63,17 @@ export async function POST(request: Request) {
       bundle = ai.bundle;
     } else {
       warnings.push(`OpenAI failed (${ai.error}). Used template bundle.`);
-      bundle = buildTemplateBundle(params, p.useCase, p.notes);
+      bundle = buildTemplateBundle(params, p.useCase, p.notes, {
+        gptfyNamespace: session.gptfyNamespace,
+      });
     }
   } else {
     if (!p.useTemplateOnly && !openaiKey) {
       warnings.push("No OpenAI API key on server — template bundle.");
     }
-    bundle = buildTemplateBundle(params, p.useCase, p.notes);
+    bundle = buildTemplateBundle(params, p.useCase, p.notes, {
+      gptfyNamespace: session.gptfyNamespace,
+    });
   }
 
   if (!bundle.intentDeployPlan?.length) {

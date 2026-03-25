@@ -44,6 +44,18 @@ export async function generateWithOpenAI(
     gptfyNamespace?: string;
   }
 ): Promise<OpenAIResult> {
+  const resolveAgenticInterfaceSymbol = (gptfyNamespace?: string): string => {
+    const raw = gptfyNamespace?.trim();
+    if (!raw) return "AIAgenticInterface";
+    const noSuffix = raw.replace(/__$/, "");
+    if (!noSuffix) return "AIAgenticInterface";
+    const normalizedNs = noSuffix.includes("_")
+      ? noSuffix.replace("_", "__")
+      : noSuffix;
+    return `${normalizedNs}_AIAgenticInterface`;
+  };
+  const agenticInterface = resolveAgenticInterfaceSymbol(orgContext.gptfyNamespace);
+
   const system = `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
 Return ONLY valid JSON (no markdown) with keys:
 handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan (optional array).
@@ -51,8 +63,8 @@ handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommand
 intentDeployPlan: 2–8 intents. Each: name (snake_case), sequence, isActive, description (trigger text), actions[] with seq, actionType (use "Canned Response" for canned), language, cannedText for canned rows. Prefer mostly Canned Response for reliability; add Create Record / Update Field only with full details[] when justified.
 
 handlerApex requirements:
-- public with sharing class ${params.handlerClass} implements AIAgenticInterface
-- Method: public String executeMethod(String requestParam, Map<String, Object> parameters)
+- global with sharing class ${params.handlerClass} implements ${agenticInterface}
+- Method: global String executeMethod(String requestParam, Map<String, Object> parameters)
 - switch on requestParam — each when value MUST match the skill name used in promptCommands file names (stem before _PromptCommand.json per Deploy-GptfyUseCasePipeline.ps1)
 - private helpers err(String), ok(Map) returning JSON.serialize with success/status/message pattern
 - System.debug(LoggingLevel.ERROR, 'PREFIX | ...') for diagnostics; never use variable name desc
