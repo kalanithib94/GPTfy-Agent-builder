@@ -22,6 +22,7 @@ function resolveAgenticInterfaceSymbol(gptfyNamespace?: string): string {
 function buildHandlerApex(
   handlerClass: string,
   logPrefix: string,
+  skillName: string,
   gptfyNamespace?: string
 ): string {
   const agenticInterface = resolveAgenticInterfaceSymbol(gptfyNamespace);
@@ -59,11 +60,11 @@ global with sharing class ${handlerClass} implements ${agenticInterface} {
             }
             logDiag('executeMethod | skill=' + requestParam);
             switch on requestParam {
-                when 'health_Check_Agent' {
+                when '${skillName}' {
                     return healthCheck(parameters);
                 }
                 when else {
-                    return err('Unsupported skill: ' + requestParam + '. Use health_Check_Agent.');
+                    return err('Unsupported skill: ' + requestParam + '. Use ${skillName}.');
                 }
             }
         } catch (Exception ex) {
@@ -116,13 +117,15 @@ export function buildTemplateBundle(
   orgContext?: { gptfyNamespace?: string }
 ): GeneratedBundle {
   const logPrefix = params.handlerClass.replace(/Handler$/, "").substring(0, 8).toUpperCase();
+  const skillName = `${params.agentDeveloperName}_health_Check_Agent`;
   const handlerApex = buildHandlerApex(
     params.handlerClass,
     logPrefix,
+    skillName,
     orgContext?.gptfyNamespace
   );
 
-  const promptFile = `health_Check_Agent_PromptCommand.json`;
+  const promptFile = `${skillName}_PromptCommand.json`;
   const promptContent = JSON.stringify(HEALTH_PROMPT_JSON, null, 2);
 
   const agentDescription = `${params.agentName}: ${useCase.slice(0, 200)}${useCase.length > 200 ? "…" : ""}`;
@@ -139,7 +142,7 @@ TOOL USAGE RULES (MANDATORY):
 - For every Salesforce read or write, you MUST call a tool first.
 - Never claim success unless tool JSON response includes success=true.
 - If required inputs are missing, ask one clear follow-up question.
-- In this starter bundle, your available skill is: health_Check_Agent.
+- In this starter bundle, your available skill is: ${skillName}.
 
 ERROR-HANDLING POLICY:
 - If a tool call fails, explain why and what user can do next.

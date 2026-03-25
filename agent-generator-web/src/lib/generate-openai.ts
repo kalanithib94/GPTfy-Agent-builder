@@ -49,6 +49,67 @@ function promptStemFromFileName(fileName: string): string {
   return base.replace(/(_prompt)?command$/i, "").replace(/_+$/, "").trim();
 }
 
+function sanitizeSkillStem(raw: string, fallback: string): string {
+  let s = (raw || "").replace(/[^A-Za-z0-9_]/g, "_").replace(/_+/g, "_");
+  s = s.replace(/^_+|_+$/g, "");
+  if (!s) s = fallback;
+  if (!/^[A-Za-z]/.test(s)) s = `S_${s}`;
+  return s;
+}
+
+function ensureOrgUniquePromptCommands(
+  promptCommands: { fileName: string; content: string }[],
+  agentDeveloperName: string
+): {
+  commands: { fileName: string; content: string }[];
+  stemMap: Map<string, string>;
+} {
+  const agentPrefix = `${sanitizeSkillStem(agentDeveloperName, "Agent")}_`;
+  const used = new Set<string>();
+  const seenOldStems = new Set<string>();
+  const stemMap = new Map<string, string>();
+  const commands: { fileName: string; content: string }[] = [];
+
+  for (let i = 0; i < promptCommands.length; i++) {
+    const pc = promptCommands[i];
+    const oldStemRaw = promptStemFromFileName(pc.fileName) || `skill_${i + 1}`;
+    const oldStem = sanitizeSkillStem(oldStemRaw, `skill_${i + 1}`);
+    if (seenOldStems.has(oldStem)) continue;
+    seenOldStems.add(oldStem);
+
+    const localStem =
+      oldStem.toLowerCase().startsWith(agentPrefix.toLowerCase()) ?
+        oldStem
+      : `${agentPrefix}${oldStem}`;
+    let candidate = sanitizeSkillStem(localStem, `${agentPrefix}skill_${i + 1}`);
+    if (used.has(candidate)) {
+      let n = 2;
+      while (used.has(`${candidate}_${n}`)) n++;
+      candidate = `${candidate}_${n}`;
+    }
+    used.add(candidate);
+    stemMap.set(oldStem, candidate);
+    commands.push({
+      fileName: `${candidate}_PromptCommand.json`,
+      content: pc.content,
+    });
+  }
+  return { commands, stemMap };
+}
+
+function rewriteHandlerSkillNames(
+  apex: string,
+  stemMap: Map<string, string>
+): string {
+  let out = apex;
+  for (const [oldStem, newStem] of Array.from(stemMap.entries())) {
+    if (!oldStem || oldStem === newStem) continue;
+    const esc = oldStem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(when\\s+')${esc}(')`, "g"), `$1${newStem}$2`);
+  }
+  return out;
+}
+
 function buildHighQualitySystemPrompt(
   agentName: string,
   useCase: string,
@@ -539,6 +600,8 @@ agentSystemPrompt quality requirements:
 
 promptCommands: array of { "fileName": "my_skill_PromptCommand.json", "content": "<pretty-printed JSON schema string>" }
 - JSON schema: type object, properties with descriptions starting with "ONLY the" where applicable, required array.
+- Skill names must be globally unique in org. Prefix every skill name with ${params.agentDeveloperName}_.
+- Avoid generic stems like health_check, create_task, update_record without the agent prefix.
 - In required[], include ONLY truly user-supplied mandatory inputs for that skill.
 - Do NOT include system-managed fields in required[] (especially OwnerId, CreatedById, LastModifiedById, Id).
 - If OwnerId is needed, default server-side or infer context; do not force user to provide it in prompt command.
@@ -689,12 +752,17 @@ and explicitly state "Never claim success without tool JSON showing success=true
     }
 
     const d = shape.data;
-    const sanitizedPromptCommands = d.promptCommands.map((pc) => ({
+    const uniquePrompting = ensureOrgUniquePromptCommands(
+      d.promptCommands,
+      params.agentDeveloperName
+    );
+    const rewrittenHandlerApex = rewriteHandlerSkillNames(d.handlerApex, uniquePrompting.stemMap);
+    const sanitizedPromptCommands = uniquePrompting.commands.map((pc) => ({
       ...pc,
       content: sanitizePromptCommandContent(pc.content),
     }));
     const handlerErr = validateHandlerApex(
-      d.handlerApex,
+      rewrittenHandlerApex,
       params.handlerClass,
       agenticInterface
     );
@@ -724,7 +792,7 @@ and explicitly state "Never claim success without tool JSON showing success=true
       version: 1,
       source: "openai",
       parameters: params,
-      handlerApex: d.handlerApex,
+      handlerApex: rewrittenHandlerApex,
       handlerMetaXml: META_XML,
       agentDescription: d.agentDescription,
       agentSystemPrompt: finalSystemPrompt,
