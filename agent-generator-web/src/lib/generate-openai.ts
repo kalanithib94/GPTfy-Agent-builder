@@ -128,7 +128,7 @@ function normalizeKey(v: string): string {
 }
 
 function intentActionClassNameFromHandler(handlerClass: string, seed = "IntentAction"): string {
-  let s = `${handlerClass}_${seed}`.replace(/[^A-Za-z0-9_]/g, "");
+  let s = `Intent_${seed}_Action`.replace(/[^A-Za-z0-9_]/g, "");
   if (!/^[A-Za-z]/.test(s)) s = `A${s}`;
   if (s.length > 40) s = s.slice(0, 40);
   return s;

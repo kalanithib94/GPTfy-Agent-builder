@@ -28,6 +28,14 @@ function pickField(fields: DescribeField[], suffix: string): string | null {
   return f?.name ?? null;
 }
 
+function pickFieldAny(fields: DescribeField[], suffixes: string[]): string | null {
+  for (const s of suffixes) {
+    const v = pickField(fields, s);
+    if (v) return v;
+  }
+  return null;
+}
+
 function soqlEscape(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -405,26 +413,31 @@ export async function deployBundleToConnectedOrg(
     const fIntActive = pickField(intf, "Is_Active__c");
     const fIntDesc = pickField(intf, "Description__c");
 
-    const fActIntent = pickField(actf, "AI_Agent_Intent__c");
+    const fActIntent = pickFieldAny(actf, ["AI_Agent_Intent__c", "Intent__c"]);
     const fActSeq = pickField(actf, "Sequence__c") ?? pickField(actf, "Seq__c");
     const fActType = pickField(actf, "Action_Type__c");
-    const fActDesc = pickField(actf, "Description__c");
-    const fActActive = pickField(actf, "Is_Active__c");
+    const fActDesc = pickFieldAny(actf, ["Description__c", "Action_Description__c"]);
+    const fActActive = pickFieldAny(actf, ["Is_Active__c", "Active__c"]);
     const fLang = pickField(actf, "Language__c");
-    const fCanned = pickField(actf, "Canned_Response_Text__c");
-    const fObj = pickField(actf, "Object_API_Name__c");
-    const fFlow = pickField(actf, "Flow_API_Name__c");
-    const fApex = pickField(actf, "Apex_Class_Name__c");
-    const fApexRet = pickField(actf, "Apex_Return_Type__c");
+    const fCanned = pickFieldAny(actf, ["Canned_Response_Text__c", "Canned_Response__c"]);
+    const fObj = pickFieldAny(actf, ["Object_API_Name__c", "Object_Name__c"]);
+    const fFlow = pickFieldAny(actf, ["Flow_API_Name__c", "Flow_Name__c"]);
+    const fApex = pickFieldAny(actf, ["Apex_Class_Name__c", "Apex_Class__c"]);
+    const fApexRet = pickFieldAny(actf, ["Apex_Return_Type__c", "Return_Type__c"]);
     const actionTypePicklist = picklistValuesBySuffix(actf, "Action_Type__c");
     const languagePicklist = picklistValuesBySuffix(actf, "Language__c");
     const apexReturnPicklist = picklistValuesBySuffix(actf, "Apex_Return_Type__c");
     const objectDescribeCache = new Map<string, DescribeField[]>();
 
-    const fDetAct = pickField(dtf, "AI_Intent_Action__c");
-    const fDetField = pickField(dtf, "Field_API_Name__c");
+    const fDetAct = pickFieldAny(dtf, ["AI_Intent_Action__c", "Intent_Action__c"]);
+    const fDetField = pickFieldAny(dtf, ["Field_API_Name__c", "Field_Name__c"]);
     const fDetType = pickField(dtf, "Type__c");
-    const fDetVal = pickField(dtf, "Hardcoded_Value_Or_AI_Instruction__c");
+    const fDetVal = pickFieldAny(dtf, [
+      "Hardcoded_Value_Or_AI_Instruction__c",
+      "Value_Or_AI_Instruction__c",
+      "Value__c",
+      "AI_Description__c",
+    ]);
     const fDetActive = pickField(dtf, "Is_Active__c");
     const detailTypePicklist = picklistValuesBySuffix(dtf, "Type__c");
 
@@ -699,13 +712,17 @@ export async function deployBundleToConnectedOrg(
 
         if (kind === "apex") {
           const cls = (act.apexClass ?? "").trim();
-          const finalClass = cls || sanitizeApexClassName(`${plan.name}_IntentAction`);
+          const generatedClass = sanitizeApexClassName(`${plan.name}_IntentAction`);
+          const finalClass =
+            !cls || cls === bundle.parameters.handlerClass ? generatedClass : cls;
           act.apexClass = finalClass;
           act.apexReturnType = "String";
           referencedApex.add(finalClass);
           if (!apexPurpose.has(finalClass)) apexPurpose.set(finalClass, purpose);
-          if (!cls) {
-            provisionNotes.push(`Intent ${plan.name}: generated missing apexClass ${finalClass}`);
+          if (!cls || cls === bundle.parameters.handlerClass) {
+            provisionNotes.push(
+              `Intent ${plan.name}: assigned dedicated apexClass ${finalClass}`
+            );
           }
         } else if (kind === "flow") {
           const flow = (act.flowApiName ?? "").trim();
@@ -901,8 +918,11 @@ export async function deployBundleToConnectedOrg(
         }
         if (fCanned && isCanned && act.cannedText) actBody[fCanned] = act.cannedText;
         if (isCanned && fCanned && !act.cannedText) {
-          pushErr(`Action for ${plan.name}: Canned Response missing cannedText`);
-          continue;
+          const fallbackText = (key: string) =>
+            key.includes("greeting")
+              ? "Hello! I can help with Salesforce tasks and follow-up actions."
+              : "I can help with Salesforce operations related to this agent.";
+          actBody[fCanned] = fallbackText(plan.name.toLowerCase());
         }
         const isCreateOrUpdate = actionTypeKey === "create record" || actionTypeKey === "update field";
         if (isCreateOrUpdate && !act.objectApiName) {
