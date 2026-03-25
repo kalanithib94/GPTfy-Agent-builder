@@ -307,12 +307,11 @@ export async function deployBundleToConnectedOrg(
       const body: Record<string, unknown> = {
         Name: truncateName(stem, 80),
         [fType!]: "Agentic",
-        [fStat!]: "Draft",
+        [fStat!]: "Active",
         [fConn!]: promptConnId,
         [fMap!]: mapId,
         [fCmd!]: pc.content,
         [fClass!]: handlerName,
-        [fExt!]: extVal,
       };
 
       const path = `sobjects/${encodeURIComponent(promptApi)}/${encodeURIComponent(fExt!)}/${encodeURIComponent(extVal)}`;
