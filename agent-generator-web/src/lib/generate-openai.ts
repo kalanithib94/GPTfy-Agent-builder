@@ -41,6 +41,8 @@ type GenerateWithOpenAIOptions = {
   retryNotes?: string;
 };
 
+type IntentPlanItem = NonNullable<z.infer<typeof llmShape>["intentDeployPlan"]>[number];
+
 function promptStemFromFileName(fileName: string): string {
   const base = fileName.replace(/\.json$/i, "");
   return base.replace(/(_prompt)?command$/i, "").replace(/_+$/, "").trim();
@@ -98,6 +100,50 @@ function validateSystemPromptQuality(systemPrompt: string): string | null {
     return "agentSystemPrompt missing critical behavioral sections";
   }
   return null;
+}
+
+function isCannedActionType(v: string | undefined): boolean {
+  return (v ?? "").trim().toLowerCase() === "canned response";
+}
+
+function ensureIntentActionDiversity(
+  plan: z.infer<typeof llmShape>["intentDeployPlan"] | undefined,
+  handlerClass: string
+): z.infer<typeof llmShape>["intentDeployPlan"] | undefined {
+  if (!plan?.length) return plan;
+
+  const cloned: IntentPlanItem[] = plan.map((intent) => ({
+    ...intent,
+    actions: intent.actions.map((a) => ({ ...a })),
+  }));
+
+  const domainIntents = cloned.filter((intent) => {
+    const n = intent.name.toLowerCase();
+    return !n.includes("greeting") && !n.includes("out_of_scope");
+  });
+  const pool = domainIntents.length ? domainIntents : cloned;
+
+  const allActions = cloned.flatMap((intent) => intent.actions);
+  const nonCannedCount = allActions.filter((a) => !isCannedActionType(a.actionType)).length;
+  const minNonCanned = Math.min(2, Math.max(1, pool.length));
+  if (nonCannedCount >= minNonCanned) return cloned;
+
+  let added = 0;
+  for (const intent of pool) {
+    const hasNonCanned = intent.actions.some((a) => !isCannedActionType(a.actionType));
+    if (hasNonCanned) continue;
+    const nextSeq = (intent.actions.map((a) => a.seq).sort((a, b) => b - a)[0] ?? 0) + 1;
+    intent.actions.push({
+      seq: nextSeq,
+      actionType: "Apex",
+      apexClass: handlerClass,
+      apexReturnType: "String",
+    });
+    added += 1;
+    if (nonCannedCount + added >= minNonCanned) break;
+  }
+
+  return cloned;
 }
 
 export async function generateWithOpenAI(
@@ -187,7 +233,11 @@ export async function generateWithOpenAI(
 Return ONLY valid JSON (no markdown) with keys:
 handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan (optional array).
 
-intentDeployPlan: 2–8 intents. Each: name (snake_case), sequence, isActive, description (trigger text), actions[] with seq, actionType (use "Canned Response" for canned), language, cannedText for canned rows. Prefer mostly Canned Response for reliability; add Create Record / Update Field only with full details[] when justified.
+intentDeployPlan: 2–8 intents. Each: name (snake_case), sequence, isActive, description (trigger text), actions[] with seq, actionType (use "Canned Response" for canned), language, cannedText for canned rows.
+Action mix rules:
+- greeting and out_of_scope can use Canned Response.
+- domain intents MUST include non-canned actions (Create Record / Update Field / Apex / Flow / Invoke Agent) where applicable.
+- avoid "mostly canned" plans; target at least 2 non-canned actions across domain intents.
 
 handlerApex requirements:
 - global with sharing class ${params.handlerClass} implements ${agenticInterface}
@@ -366,6 +416,10 @@ and explicitly state "Never claim success without tool JSON showing success=true
     }
 
     const skillNames = d.promptCommands.map((pc) => promptStemFromFileName(pc.fileName)).filter(Boolean);
+    const intentDeployPlan = ensureIntentActionDiversity(
+      d.intentDeployPlan,
+      params.handlerClass
+    );
     const systemPromptErr = validateSystemPromptQuality(d.agentSystemPrompt);
     const finalSystemPrompt =
       systemPromptErr ?
@@ -388,7 +442,7 @@ and explicitly state "Never claim success without tool JSON showing success=true
       fullConfigStubApex:
         d.fullConfigStubApex ??
         `String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}';\n// TODO: intent rows`,
-      intentDeployPlan: d.intentDeployPlan,
+      intentDeployPlan,
     };
 
     return { ok: true, bundle };
