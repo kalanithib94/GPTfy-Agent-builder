@@ -27,8 +27,8 @@ export async function GET(request: Request) {
   const sandbox = searchParams.get("sandbox") === "1";
   const env = sandbox ? "sandbox" : "production";
   const state = randomBytes(24).toString("hex");
-  /** Opt-in: set SALESFORCE_USE_PKCE=true when the External Client App requires PKCE. */
-  const usePkce = process.env.SALESFORCE_USE_PKCE === "true";
+  /** Default ON: most External Client Apps now require PKCE. */
+  const usePkce = process.env.SALESFORCE_DISABLE_PKCE !== "true";
 
   const jar = cookies();
   jar.set("sf_oauth_state", state, {

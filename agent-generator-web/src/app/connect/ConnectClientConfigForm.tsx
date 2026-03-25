@@ -47,36 +47,12 @@ export function ConnectClientConfigForm({ suggestedCallback, usingSessionConfig 
     }
   }
 
-  async function useEnvConfig() {
-    setBusy(true);
-    setErr(null);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/salesforce/client-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "env" }),
-      });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setErr(j.error || "Failed to switch back to server env config.");
-        return;
-      }
-      setMsg("Switched to server env config.");
-      router.refresh();
-    } catch {
-      setErr("Network error while switching config.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="card-muted space-y-4">
-      <h2 className="text-sm font-semibold text-neutral-200">Optional: use this org&apos;s External Client App</h2>
+      <h2 className="text-sm font-semibold text-neutral-200">Step 1: paste this org&apos;s External Client App</h2>
       <p className="text-xs text-neutral-500">
-        For multi-org setups, paste each org&apos;s Client ID/Secret + callback here. Stored encrypted in your session
-        cookie for this browser only.
+        Paste Client ID, Client Secret, and Callback URL from the target org. Stored encrypted in your session cookie
+        for this browser only.
       </p>
       <p className="text-xs text-neutral-400">
         Active source:{" "}
@@ -133,9 +109,6 @@ export function ConnectClientConfigForm({ suggestedCallback, usingSessionConfig 
           onClick={saveSessionConfig}
         >
           {busy ? "Saving..." : "Save for this browser"}
-        </button>
-        <button type="button" className="btn" disabled={busy} onClick={useEnvConfig}>
-          Use server env instead
         </button>
       </div>
     </div>

@@ -58,7 +58,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const pkceExpected = process.env.SALESFORCE_USE_PKCE === "true";
+  const pkceExpected = process.env.SALESFORCE_DISABLE_PKCE !== "true";
   if (pkceExpected && !codeVerifier) {
     return NextResponse.redirect(
       new URL("/connect?error=missing_pkce_verifier", url.origin)
