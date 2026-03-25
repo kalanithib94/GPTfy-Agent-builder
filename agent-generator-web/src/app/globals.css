@@ -18,7 +18,8 @@
 }
 
 body {
-  @apply text-neutral-200 antialiased text-sm;
+  @apply text-neutral-200 antialiased text-base leading-relaxed;
+  font-family: "Aptos", "Segoe UI", Calibri, Inter, "Helvetica Neue", Arial, sans-serif;
   background: var(--bg);
   min-height: 100vh;
 }
@@ -35,7 +36,7 @@ body {
 
 /* Plain inputs */
 .inp {
-  @apply w-full rounded-lg border px-3 py-2 text-neutral-100 placeholder:text-neutral-600 transition-colors;
+  @apply w-full rounded-lg border px-3 py-2 text-base text-neutral-100 placeholder:text-neutral-600 transition-colors;
   border-color: var(--border);
   background: var(--surface);
 }
@@ -45,7 +46,7 @@ body {
 }
 
 .btn {
-  @apply rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-45 disabled:pointer-events-none;
+  @apply rounded-lg border px-4 py-2 text-base font-medium transition-colors disabled:opacity-45 disabled:pointer-events-none;
   border-color: var(--border);
   background: var(--surface);
   color: #e2e8f0;
