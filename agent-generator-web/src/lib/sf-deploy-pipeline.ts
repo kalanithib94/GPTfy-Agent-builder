@@ -722,6 +722,35 @@ export async function deployBundleToConnectedOrg(
           } else {
             referencedFlows.add(flow);
           }
+        } else if (kind === "create record" || kind === "update field") {
+          const hasObject = Boolean((act.objectApiName ?? "").trim());
+          const hasDetails = Boolean(act.details?.length);
+          if (!hasObject || !hasDetails) {
+            const generated = sanitizeApexClassName(`${plan.name}_DataAction`);
+            act.actionType = "Apex";
+            act.apexClass = generated;
+            act.apexReturnType = "String";
+            act.objectApiName = undefined;
+            act.details = undefined;
+            referencedApex.add(generated);
+            apexPurpose.set(
+              generated,
+              `${purpose} | ConvertedFrom=${kind}|Reason=missing object/details`
+            );
+            provisionNotes.push(
+              `Intent ${plan.name}: ${kind} missing object/details, converted to Apex ${generated}`
+            );
+          }
+        } else if (kind === "invoke agent") {
+          const generated = sanitizeApexClassName(`${plan.name}_InvokeAction`);
+          act.actionType = "Apex";
+          act.apexClass = generated;
+          act.apexReturnType = "String";
+          referencedApex.add(generated);
+          apexPurpose.set(generated, `${purpose} | ConvertedFrom=invoke_agent`);
+          provisionNotes.push(
+            `Intent ${plan.name}: converted Invoke Agent to Apex ${generated} (no target mapping in generated payload)`
+          );
         }
       }
     }
