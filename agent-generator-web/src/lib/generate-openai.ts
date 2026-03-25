@@ -157,12 +157,52 @@ function buildProactiveIntent(
     },
   ];
   const t = templates[(idx - 1) % templates.length];
-  return {
-    name: t.name,
-    sequence,
-    isActive: true,
-    description: t.description,
-    actions: [
+  const createTaskAction = (priority: "High" | "Normal") => ({
+    seq: 1,
+    actionType: "Create Record",
+    objectApiName: "Task",
+    details: [
+      {
+        fieldApiName: "Subject",
+        type: "AI Extracted",
+        valueOrInstruction:
+          "Extract a concise task subject from user urgency/problem statement.",
+      },
+      {
+        fieldApiName: "Description",
+        type: "AI Extracted",
+        valueOrInstruction:
+          "Summarize the issue context and next best action for the task owner.",
+      },
+      {
+        fieldApiName: "ActivityDate",
+        type: "AI Extracted",
+        valueOrInstruction:
+          "Extract due date from conversation; if missing infer nearest practical follow-up date.",
+      },
+      {
+        fieldApiName: "Priority",
+        type: "Hardcoded",
+        valueOrInstruction: priority,
+      },
+      {
+        fieldApiName: "Status",
+        type: "Hardcoded",
+        valueOrInstruction: "Not Started",
+      },
+      {
+        fieldApiName: "WhatId",
+        type: "AI Extracted",
+        valueOrInstruction:
+          "Link to relevant Opportunity/Account context id when available.",
+      },
+    ],
+  });
+
+  const actionsByIntent = [
+    [createTaskAction("High")],
+    [createTaskAction("Normal")],
+    [
       {
         seq: 1,
         actionType: "Apex",
@@ -170,6 +210,13 @@ function buildProactiveIntent(
         apexReturnType: "Map",
       },
     ],
+  ];
+  return {
+    name: t.name,
+    sequence,
+    isActive: true,
+    description: t.description,
+    actions: actionsByIntent[(idx - 1) % actionsByIntent.length],
   };
 }
 
@@ -220,6 +267,23 @@ function enforceIntentPlanStrictness(
       actions: cleanedActions,
     };
   });
+
+  // Ensure domain intents have complete config when using Create/Update actions.
+  for (const intent of rewritten) {
+    const key = normalizeKey(intent.name);
+    if (key.includes("greeting") || key.includes("outofscope")) continue;
+    const repaired: typeof intent.actions = [];
+    for (const a of intent.actions) {
+      const t = lowerActionType(a.actionType);
+      if ((t === "create record" || t === "update field") && (!a.objectApiName || !a.details?.length)) {
+        const fallback = buildProactiveIntent(proactiveIdx++, intent.sequence, intentActionClass);
+        repaired.push(...fallback.actions);
+        continue;
+      }
+      repaired.push(a);
+    }
+    intent.actions = repaired;
+  }
 
   const domain = rewritten.filter((i) => {
     const k = normalizeKey(i.name);
@@ -378,6 +442,8 @@ Action mix rules:
 - do NOT create intent names/descriptions that simply mirror skill names like find/update/create task.
 - language field is ONLY for Canned Response actions. Do not include language for Apex/Flow/Create Record/Update Field/Invoke Agent.
 - for Apex actions, prefer apexReturnType "Map".
+- for Create Record / Update Field, ALWAYS include objectApiName and at least one detail row with fieldApiName + type + valueOrInstruction.
+- prefer practical business actions (e.g., create follow-up Task with owner-facing context) over empty meta actions.
 
 handlerApex requirements:
 - global with sharing class ${params.handlerClass} implements ${agenticInterface}
