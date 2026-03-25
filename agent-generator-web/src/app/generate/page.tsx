@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { GeneratedBundle } from "@/lib/generation-types";
+import type { IntentDeployPlan } from "@/lib/intent-deploy-types";
 
 type SessionInfo = {
   connected: boolean;
@@ -526,12 +527,118 @@ function renderTab(
     case "desc":
       return wrap("desc", bundle.agentDescription);
     case "intents":
-      return wrap("intents", bundle.intentsConfigMd);
+      return (
+        <div className="space-y-6">
+          {bundle.intentDeployPlan?.length ? (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-white">Intent actions (deploy plan)</h3>
+              {bundle.intentDeployPlan.map((intent, idx) => (
+                <IntentPlanCard key={`${intent.name}_${idx}`} intent={intent} index={idx} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-md border border-amber-800/60 bg-amber-950/30 px-3 py-2 text-sm text-amber-100">
+              No structured intent action plan found in this bundle.
+            </div>
+          )}
+          <div>
+            <div className="text-sm text-cyan-400 mb-2">Raw intents markdown</div>
+            {wrap("intents", bundle.intentsConfigMd)}
+          </div>
+        </div>
+      );
     case "fullconfig":
       return wrap("fc", bundle.fullConfigStubApex);
     default:
       return null;
   }
+}
+
+function IntentPlanCard({ intent, index }: { intent: IntentDeployPlan; index: number }) {
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-black/30 p-4 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs px-2 py-1 rounded bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)]">
+          Intent {index + 1}
+        </span>
+        {intent.sequence !== undefined ? (
+          <span className="text-xs px-2 py-1 rounded bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)]">
+            Seq {intent.sequence}
+          </span>
+        ) : null}
+        <span
+          className={`text-xs px-2 py-1 rounded border ${
+            intent.isActive === false
+              ? "border-amber-700/60 text-amber-200 bg-amber-950/30"
+              : "border-emerald-700/60 text-emerald-200 bg-emerald-950/30"
+          }`}
+        >
+          {intent.isActive === false ? "Inactive" : "Active"}
+        </span>
+      </div>
+
+      <div>
+        <div className="text-white font-semibold">{intent.name}</div>
+        {intent.description ? (
+          <div className="text-sm text-[var(--muted)] mt-1">{intent.description}</div>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-sm font-medium text-white">Actions</div>
+        {intent.actions.length ? (
+          <div className="space-y-2">
+            {intent.actions.map((action, actionIdx) => (
+              <div
+                key={`${intent.name}_a_${actionIdx}`}
+                className="rounded-lg border border-[var(--border)] bg-black/25 p-3"
+              >
+                <div className="text-sm text-white">
+                  <strong>#{action.seq}</strong> - {action.actionType}
+                </div>
+                <div className="mt-1 text-xs text-[var(--muted)] space-y-1">
+                  {action.language ? <div>Language: {action.language}</div> : null}
+                  {action.cannedText ? (
+                    <div className="whitespace-pre-wrap">Canned text: {action.cannedText}</div>
+                  ) : null}
+                  {action.objectApiName ? <div>Object: {action.objectApiName}</div> : null}
+                  {action.flowApiName ? <div>Flow: {action.flowApiName}</div> : null}
+                  {action.apexClass ? <div>Apex class: {action.apexClass}</div> : null}
+                  {action.apexReturnType ? (
+                    <div>Apex return type: {action.apexReturnType}</div>
+                  ) : null}
+                </div>
+                {action.details?.length ? (
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="text-left text-[var(--muted)]">
+                          <th className="pr-3 py-1">Field</th>
+                          <th className="pr-3 py-1">Type</th>
+                          <th className="py-1">Value/Instruction</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {action.details.map((d, dIdx) => (
+                          <tr key={`${intent.name}_a_${actionIdx}_d_${dIdx}`} className="align-top">
+                            <td className="pr-3 py-1 text-gray-200">{d.fieldApiName}</td>
+                            <td className="pr-3 py-1 text-gray-200">{d.type}</td>
+                            <td className="py-1 text-gray-300">{d.valueOrInstruction ?? "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs text-amber-200">No actions on this intent.</div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function Field({

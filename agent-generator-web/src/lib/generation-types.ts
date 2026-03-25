@@ -69,13 +69,24 @@ export function resolveGenerateParams(
     extPrefix: "UC:GENERATED:",
   }
 ) {
+  const sanitizeApexClassName = (raw: string, fallback: string): string => {
+    let s = (raw || "").replace(/[^A-Za-z0-9_]/g, "");
+    if (!s) s = fallback;
+    if (!/^[A-Za-z]/.test(s)) s = `A${s}`;
+    if (s.length > 40) s = s.slice(0, 40);
+    return s;
+  };
+
   const agentName = p.agentName ?? defaults.agentName;
   const agentDev =
     p.agentDeveloperName ??
     (agentName.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "") ||
       defaults.agentDev);
   const fromDev = agentDev.replace(/_+/g, "") + "AgenticHandler";
-  const handler = p.handlerClass ?? fromDev;
+  const handler = sanitizeApexClassName(
+    p.handlerClass ?? fromDev,
+    "GeneratedAgentHandler"
+  );
   const extPrefix = p.externalIdPrefix ?? defaults.extPrefix;
   const conn = p.connectionName ?? "GPTfy (OpenAI)";
   const agenticConn = p.agentModelConnectionName ?? "Response API Agentic";
@@ -84,7 +95,7 @@ export function resolveGenerateParams(
   return {
     agentName,
     agentDeveloperName: agentDev,
-    handlerClass: handler.replace(/[^A-Za-z0-9_]/g, ""),
+    handlerClass: handler,
     externalIdPrefix: extPrefix,
     connectionName: conn,
     agentModelConnectionName: agenticConn,

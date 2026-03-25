@@ -15,11 +15,8 @@ function resolveAgenticInterfaceSymbol(gptfyNamespace?: string): string {
   const noSuffix = raw.replace(/__$/, "");
   if (!noSuffix) return "AIAgenticInterface";
 
-  // Example: ccai_qa__ -> ccai__qa_AIAgenticInterface (as required by target orgs).
-  const normalizedNs = noSuffix.includes("_")
-    ? noSuffix.replace("_", "__")
-    : noSuffix;
-  return `${normalizedNs}_AIAgenticInterface`;
+  // Apex class namespaces are dot-qualified, e.g. ccai_qa.AIAgenticInterface
+  return `${noSuffix}.AIAgenticInterface`;
 }
 
 function buildHandlerApex(

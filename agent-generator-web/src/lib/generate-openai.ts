@@ -49,12 +49,33 @@ export async function generateWithOpenAI(
     if (!raw) return "AIAgenticInterface";
     const noSuffix = raw.replace(/__$/, "");
     if (!noSuffix) return "AIAgenticInterface";
-    const normalizedNs = noSuffix.includes("_")
-      ? noSuffix.replace("_", "__")
-      : noSuffix;
-    return `${normalizedNs}_AIAgenticInterface`;
+    return `${noSuffix}.AIAgenticInterface`;
   };
   const agenticInterface = resolveAgenticInterfaceSymbol(orgContext.gptfyNamespace);
+
+  const validateHandlerApex = (
+    apex: string,
+    expectedClass: string,
+    expectedInterface: string
+  ): string | null => {
+    if (!new RegExp(`global\\s+with\\s+sharing\\s+class\\s+${expectedClass}\\b`).test(apex)) {
+      return "missing required global class signature";
+    }
+    if (!apex.includes(`implements ${expectedInterface}`)) {
+      return `missing expected interface ${expectedInterface}`;
+    }
+    if (!/global\s+String\s+executeMethod\s*\(/.test(apex)) {
+      return "missing required global executeMethod signature";
+    }
+    // Guard against Java-style switch syntax that breaks Apex.
+    if (/case\s+'[^']+'\s*:/.test(apex) || /\bcase\s+[A-Za-z0-9_]+\s*:/.test(apex)) {
+      return "invalid Apex switch syntax (case:) — use switch on ... when ... { }";
+    }
+    if (expectedClass.length > 40) {
+      return "handler class name exceeds Apex 40 char limit";
+    }
+    return null;
+  };
 
   const system = `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
 Return ONLY valid JSON (no markdown) with keys:
@@ -163,6 +184,15 @@ fullConfigStubApex: optional Apex snippet as string with String targetAgentName 
     }
 
     const d = shape.data;
+    const handlerErr = validateHandlerApex(
+      d.handlerApex,
+      params.handlerClass,
+      agenticInterface
+    );
+    if (handlerErr) {
+      return { ok: false, error: `Invalid handlerApex: ${handlerErr}` };
+    }
+
     const bundle: GeneratedBundle = {
       version: 1,
       source: "openai",
