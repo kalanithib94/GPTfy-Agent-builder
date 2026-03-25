@@ -23,10 +23,34 @@ type Payload = {
   summary: { allOk: boolean; okCount: number; total: number };
 };
 
+type ModelField = {
+  apiName: string;
+  label?: string;
+  type?: string;
+  required: boolean;
+  createable?: boolean;
+  updateable?: boolean;
+  picklistValues?: string[];
+};
+
+type ModelObject = {
+  localName: string;
+  apiName: string;
+  keyFields: ModelField[];
+  allFieldsCount: number;
+};
+
+type ModelPayload = {
+  connected: boolean;
+  namespace?: string | null;
+  objects: ModelObject[];
+};
+
 export default function StatusPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [model, setModel] = useState<ModelPayload | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +83,16 @@ export default function StatusPage() {
     await fetch("/api/salesforce/logout", { method: "POST" });
     setData(null);
     setError("not_connected");
+  }
+
+  async function loadModel() {
+    try {
+      const res = await fetch("/api/org/model", { cache: "no-store" });
+      if (!res.ok) return;
+      setModel((await res.json()) as ModelPayload);
+    } catch {
+      // ignore model load errors in main status page
+    }
   }
 
   if (loading) {
@@ -113,6 +147,9 @@ export default function StatusPage() {
           </button>
           <button type="button" onClick={() => logout()} className="btn text-sm">
             Log out
+          </button>
+          <button type="button" onClick={() => loadModel()} className="btn text-sm">
+            Load data model
           </button>
         </div>
       </div>
@@ -171,6 +208,48 @@ export default function StatusPage() {
           </tbody>
         </table>
       </div>
+
+      {model ? (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-white">Connected org data model</h2>
+          {model.objects.map((obj) => (
+            <div key={obj.localName} className="rounded-xl border border-[var(--border)] bg-black/20 p-4">
+              <div className="mb-2 text-sm text-cyan-300">
+                {obj.localName} → <span className="font-mono text-xs text-neutral-400">{obj.apiName}</span>
+              </div>
+              <div className="mb-2 text-xs text-neutral-500">Total fields: {obj.allFieldsCount}</div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-xs">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] text-left text-neutral-500">
+                      <th className="px-2 py-1">Field</th>
+                      <th className="px-2 py-1">Type</th>
+                      <th className="px-2 py-1">Required</th>
+                      <th className="px-2 py-1">Create/Update</th>
+                      <th className="px-2 py-1">Picklist values</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {obj.keyFields.map((f) => (
+                      <tr key={f.apiName} className="border-t border-[var(--border)]">
+                        <td className="px-2 py-1 font-mono text-neutral-200">{f.apiName}</td>
+                        <td className="px-2 py-1 text-neutral-400">{f.type ?? "—"}</td>
+                        <td className="px-2 py-1 text-neutral-300">{f.required ? "yes" : "no"}</td>
+                        <td className="px-2 py-1 text-neutral-300">
+                          {f.createable ? "C" : "-"} / {f.updateable ? "U" : "-"}
+                        </td>
+                        <td className="px-2 py-1 text-neutral-500">
+                          {f.picklistValues?.slice(0, 8).join(", ") ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <Link href="/generate" className="inline-flex text-sm font-medium text-cyan-300 hover:underline">
         → Generate

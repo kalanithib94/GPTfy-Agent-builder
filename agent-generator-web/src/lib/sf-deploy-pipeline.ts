@@ -426,6 +426,7 @@ export async function deployBundleToConnectedOrg(
     const fDetType = pickField(dtf, "Type__c");
     const fDetVal = pickField(dtf, "Hardcoded_Value_Or_AI_Instruction__c");
     const fDetActive = pickField(dtf, "Is_Active__c");
+    const detailTypePicklist = picklistValuesBySuffix(dtf, "Type__c");
 
     const requiredPrompt = [fExt, fCmd, fClass, fConn, fMap, fType, fStat];
     if (requiredPrompt.some((x) => !x)) {
@@ -1000,10 +1001,12 @@ export async function deployBundleToConnectedOrg(
         if (!fDetAct || !fDetField || !fDetType) continue;
 
         for (const d of normalizedDetails) {
+          const normalizedDetailType =
+            normalizePicklistValue(d.type, detailTypePicklist) ?? d.type;
           const db: Record<string, unknown> = {
             [fDetAct]: actionId,
             [fDetField]: d.fieldApiName,
-            [fDetType]: d.type,
+            [fDetType]: normalizedDetailType,
           };
           if (fDetActive) db[fDetActive] = true;
           if (fDetVal && d.valueOrInstruction) db[fDetVal] = d.valueOrInstruction;

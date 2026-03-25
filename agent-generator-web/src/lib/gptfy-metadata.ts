@@ -11,7 +11,16 @@ export const OBJECT_CANDIDATES = [
 
 export type ResolvedNamespace = (typeof OBJECT_CANDIDATES)[number];
 
-export type DescribeField = { name: string; type?: string; label?: string };
+export type DescribeField = {
+  name: string;
+  type?: string;
+  label?: string;
+  nillable?: boolean;
+  createable?: boolean;
+  updateable?: boolean;
+  length?: number;
+  picklistValues?: { value?: string; label?: string; active?: boolean }[];
+};
 
 export type DescribeResult = {
   name: string;
