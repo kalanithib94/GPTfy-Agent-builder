@@ -45,6 +45,16 @@ export function promptStemFromFileName(fileName: string): string {
   return base.replace(/(_prompt)?command$/i, "").replace(/_+$/, "").trim();
 }
 
+function rewriteHandlerSkillNames(apex: string, stemMap: Map<string, string>): string {
+  let out = apex;
+  for (const [oldStem, newStem] of Array.from(stemMap.entries())) {
+    if (!oldStem || !newStem || oldStem === newStem) continue;
+    const esc = oldStem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(when\\s+')${esc}(')`, "g"), `$1${newStem}$2`);
+  }
+  return out;
+}
+
 function truncateName(s: string, max: number): string {
   return s.length <= max ? s : s.substring(0, max);
 }
@@ -475,6 +485,69 @@ export async function deployBundleToConnectedOrg(
       throw new Error("Missing AI_Connection__c field: Type__c");
     }
 
+    // Guard against org-wide skill-name collisions before we deploy/update handler + prompts.
+    // If a prompt Name already exists for a different external id, rename the new skill stem
+    // and rewrite handler switch branches to keep skill dispatch aligned.
+    const extPrefix = bundle.parameters.externalIdPrefix;
+    const intended = bundle.promptCommands
+      .map((pc, idx) => ({
+        idx,
+        oldStem: promptStemFromFileName(pc.fileName),
+      }))
+      .filter((x) => Boolean(x.oldStem));
+    const intendedNames = intended.map((x) => String(x.oldStem));
+    const intendedExts = intendedNames.map((n) => `${extPrefix}${n}`);
+    const qNames =
+      intendedNames.length ?
+        `SELECT Id, Name, ${fExt!}, ${fClass!} FROM ${promptApi} WHERE Name IN (${intendedNames.map((n) => `'${soqlEscape(n)}'`).join(",")})`
+      : "";
+    const qExts =
+      intendedExts.length ?
+        `SELECT Id, Name, ${fExt!}, ${fClass!} FROM ${promptApi} WHERE ${fExt!} IN (${intendedExts.map((e) => `'${soqlEscape(e)}'`).join(",")})`
+      : "";
+    const nameRows = qNames ? await runQuery(instanceUrl, token, qNames) : [];
+    const extRows = qExts ? await runQuery(instanceUrl, token, qExts) : [];
+    const extSeen = new Map<string, Record<string, unknown>>();
+    for (const r of extRows) {
+      const extVal = String(r[fExt!] ?? "");
+      if (extVal) extSeen.set(extVal, r);
+    }
+    const usedNames = new Set(
+      nameRows.map((r) => String(r.Name ?? "")).filter(Boolean).map((n) => n.toLowerCase())
+    );
+    const renameMap = new Map<string, string>();
+    const renameNotes: string[] = [];
+    for (const item of intended) {
+      const oldStem = String(item.oldStem);
+      const extVal = `${extPrefix}${oldStem}`;
+      // Same external id means this is our managed skill; safe to keep stem.
+      if (extSeen.has(extVal)) continue;
+      let finalStem = oldStem;
+      let suffix = 2;
+      while (usedNames.has(finalStem.toLowerCase())) {
+        finalStem = `${oldStem}_${suffix++}`;
+      }
+      usedNames.add(finalStem.toLowerCase());
+      if (finalStem !== oldStem) {
+        renameMap.set(oldStem, finalStem);
+        bundle.promptCommands[item.idx] = {
+          ...bundle.promptCommands[item.idx],
+          fileName: `${finalStem}_PromptCommand.json`,
+        };
+        renameNotes.push(`${oldStem} -> ${finalStem}`);
+      }
+    }
+    if (renameMap.size > 0) {
+      bundle.handlerApex = rewriteHandlerSkillNames(bundle.handlerApex, renameMap);
+      addStep(
+        "Resolve skill name collisions",
+        true,
+        `renamed ${renameMap.size} skill(s): ${renameNotes.join(", ")}`
+      );
+    } else {
+      addStep("Resolve skill name collisions", true, "no conflicts found");
+    }
+
     const meta = await deployApexClassMetadata(
       instanceUrl,
       token,
@@ -543,7 +616,6 @@ export async function deployBundleToConnectedOrg(
 
     addStep("Resolve connections & mapping", true);
 
-    const extPrefix = bundle.parameters.externalIdPrefix;
     const handlerName = bundle.parameters.handlerClass;
 
     for (const pc of bundle.promptCommands) {
