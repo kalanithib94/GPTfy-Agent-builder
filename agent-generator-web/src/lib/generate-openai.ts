@@ -123,6 +123,124 @@ function isCannedActionType(v: string | undefined): boolean {
   return (v ?? "").trim().toLowerCase() === "canned response";
 }
 
+function normalizeKey(v: string): string {
+  return v.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function intentActionClassNameFromHandler(handlerClass: string): string {
+  let s = `${handlerClass}IntentAction`.replace(/[^A-Za-z0-9_]/g, "");
+  if (!/^[A-Za-z]/.test(s)) s = `A${s}`;
+  if (s.length > 40) s = s.slice(0, 40);
+  return s;
+}
+
+function buildProactiveIntent(
+  idx: number,
+  sequence: number | undefined,
+  apexClass: string
+): IntentPlanItem {
+  const templates = [
+    {
+      name: `proactive_followup_${idx}`,
+      description:
+        "Trigger when user intent is unclear or partially specified. Collect missing context and create a follow-up task to ensure closure.",
+    },
+    {
+      name: `customer_risk_escalation_${idx}`,
+      description:
+        "Trigger when user shows urgency, repeated failure, or frustration. Proactively escalate with business-safe handling and ownership.",
+    },
+    {
+      name: `data_quality_guardrail_${idx}`,
+      description:
+        "Trigger when user input is conflicting or incomplete for a safe update. Apply guardrail logic and produce clear next steps.",
+    },
+  ];
+  const t = templates[(idx - 1) % templates.length];
+  return {
+    name: t.name,
+    sequence,
+    isActive: true,
+    description: t.description,
+    actions: [
+      {
+        seq: 1,
+        actionType: "Apex",
+        apexClass,
+        apexReturnType: "Map",
+      },
+    ],
+  };
+}
+
+function enforceIntentPlanStrictness(
+  plan: z.infer<typeof llmShape>["intentDeployPlan"] | undefined,
+  skillNames: string[],
+  handlerClass: string
+): z.infer<typeof llmShape>["intentDeployPlan"] | undefined {
+  if (!plan?.length) return plan;
+
+  const skillKeys = new Set(skillNames.map((s) => normalizeKey(s)).filter(Boolean));
+  const intentActionClass = intentActionClassNameFromHandler(handlerClass);
+  let proactiveIdx = 1;
+
+  const rewritten: IntentPlanItem[] = plan.map((intent) => {
+    const intentKey = normalizeKey(intent.name);
+    const isGreeting = intentKey.includes("greeting");
+    const isOutOfScope = intentKey.includes("outofscope");
+    const isSystemIntent = isGreeting || isOutOfScope;
+    const duplicatesSkill = Array.from(skillKeys).some(
+      (k) => k && (intentKey === k || intentKey.includes(k) || k.includes(intentKey))
+    );
+
+    if (!isSystemIntent && duplicatesSkill) {
+      const replacement = buildProactiveIntent(
+        proactiveIdx++,
+        intent.sequence,
+        intentActionClass
+      );
+      return replacement;
+    }
+
+    const cleanedActions = intent.actions.map((a) => {
+      const canned = isCannedActionType(a.actionType);
+      return {
+        ...a,
+        language: canned ? a.language : undefined,
+        cannedText: canned ? a.cannedText : undefined,
+        apexReturnType:
+          lowerActionType(a.actionType) === "apex"
+            ? a.apexReturnType || "Map"
+            : undefined,
+      };
+    });
+
+    return {
+      ...intent,
+      actions: cleanedActions,
+    };
+  });
+
+  const domain = rewritten.filter((i) => {
+    const k = normalizeKey(i.name);
+    return !k.includes("greeting") && !k.includes("outofscope");
+  });
+  const domainNonCanned = domain.flatMap((i) => i.actions).filter((a) => !isCannedActionType(a.actionType)).length;
+
+  if (domainNonCanned < 2) {
+    const needed = 2 - domainNonCanned;
+    for (let i = 0; i < needed; i++) {
+      rewritten.push(buildProactiveIntent(proactiveIdx++, 100 + i, intentActionClass));
+    }
+  }
+
+  return rewritten;
+}
+
+function lowerActionType(v: string | undefined): string {
+  return (v ?? "").trim().toLowerCase();
+}
+
 function ensureIntentActionDiversity(
   plan: z.infer<typeof llmShape>["intentDeployPlan"] | undefined,
   handlerClass: string
@@ -139,12 +257,7 @@ function ensureIntentActionDiversity(
     return !n.includes("greeting") && !n.includes("out_of_scope");
   });
   const pool = domainIntents.length ? domainIntents : cloned;
-  const intentActionClass = (() => {
-    let s = `${handlerClass}IntentAction`.replace(/[^A-Za-z0-9_]/g, "");
-    if (!/^[A-Za-z]/.test(s)) s = `A${s}`;
-    if (s.length > 40) s = s.slice(0, 40);
-    return s;
-  })();
+  const intentActionClass = intentActionClassNameFromHandler(handlerClass);
 
   const allActions = cloned.flatMap((intent) => intent.actions);
   const nonCannedCount = allActions.filter((a) => !isCannedActionType(a.actionType)).length;
@@ -263,6 +376,8 @@ Action mix rules:
 - avoid "mostly canned" plans; target at least 2 non-canned actions across domain intents.
 - domain intents MUST be proactive (underlying meaning, escalation, retention, exception handling), not duplicates of skill operations.
 - do NOT create intent names/descriptions that simply mirror skill names like find/update/create task.
+- language field is ONLY for Canned Response actions. Do not include language for Apex/Flow/Create Record/Update Field/Invoke Agent.
+- for Apex actions, prefer apexReturnType "Map".
 
 handlerApex requirements:
 - global with sharing class ${params.handlerClass} implements ${agenticInterface}
@@ -443,8 +558,13 @@ and explicitly state "Never claim success without tool JSON showing success=true
     }
 
     const skillNames = d.promptCommands.map((pc) => promptStemFromFileName(pc.fileName)).filter(Boolean);
-    const intentDeployPlan = ensureIntentActionDiversity(
+    const intentDeployPlanDraft = ensureIntentActionDiversity(
       d.intentDeployPlan,
+      params.handlerClass
+    );
+    const intentDeployPlan = enforceIntentPlanStrictness(
+      intentDeployPlanDraft,
+      skillNames,
       params.handlerClass
     );
     const systemPromptErr = validateSystemPromptQuality(d.agentSystemPrompt);
