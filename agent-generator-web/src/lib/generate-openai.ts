@@ -139,6 +139,12 @@ function ensureIntentActionDiversity(
     return !n.includes("greeting") && !n.includes("out_of_scope");
   });
   const pool = domainIntents.length ? domainIntents : cloned;
+  const intentActionClass = (() => {
+    let s = `${handlerClass}IntentAction`.replace(/[^A-Za-z0-9_]/g, "");
+    if (!/^[A-Za-z]/.test(s)) s = `A${s}`;
+    if (s.length > 40) s = s.slice(0, 40);
+    return s;
+  })();
 
   const allActions = cloned.flatMap((intent) => intent.actions);
   const nonCannedCount = allActions.filter((a) => !isCannedActionType(a.actionType)).length;
@@ -153,8 +159,8 @@ function ensureIntentActionDiversity(
     intent.actions.push({
       seq: nextSeq,
       actionType: "Apex",
-      apexClass: handlerClass,
-      apexReturnType: "String",
+      apexClass: intentActionClass,
+      apexReturnType: "Map",
     });
     added += 1;
     if (nonCannedCount + added >= minNonCanned) break;
@@ -255,6 +261,8 @@ Action mix rules:
 - greeting and out_of_scope can use Canned Response.
 - domain intents MUST include non-canned actions (Create Record / Update Field / Apex / Flow / Invoke Agent) where applicable.
 - avoid "mostly canned" plans; target at least 2 non-canned actions across domain intents.
+- domain intents MUST be proactive (underlying meaning, escalation, retention, exception handling), not duplicates of skill operations.
+- do NOT create intent names/descriptions that simply mirror skill names like find/update/create task.
 
 handlerApex requirements:
 - global with sharing class ${params.handlerClass} implements ${agenticInterface}

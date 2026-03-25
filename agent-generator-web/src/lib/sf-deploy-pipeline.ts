@@ -45,6 +45,32 @@ function lower(v: string | undefined): string {
   return (v ?? "").trim().toLowerCase();
 }
 
+function picklistValuesBySuffix(fields: DescribeField[], suffix: string): string[] {
+  const f = fields.find((x) => fieldSuffixMatches(x.name, suffix)) as
+    | (DescribeField & {
+        picklistValues?: { value?: string; active?: boolean }[];
+      })
+    | undefined;
+  const vals = f?.picklistValues;
+  if (!Array.isArray(vals)) return [];
+  return vals
+    .filter((v) => v && (v.active ?? true) && typeof v.value === "string")
+    .map((v) => String(v.value));
+}
+
+function normalizePicklistValue(input: string | undefined, allowed: string[]): string | null {
+  const raw = (input ?? "").trim();
+  if (!raw || !allowed.length) return null;
+  const exact = allowed.find((v) => v === raw);
+  if (exact) return exact;
+  const lowered = raw.toLowerCase();
+  const ci = allowed.find((v) => v.toLowerCase() === lowered);
+  if (ci) return ci;
+  const compact = lowered.replace(/[\s_\-]/g, "");
+  const fuzzy = allowed.find((v) => v.toLowerCase().replace(/[\s_\-]/g, "") === compact);
+  return fuzzy ?? null;
+}
+
 function resolveIntentActionInterfaceSymbol(gptfyNamespace?: string): string {
   const raw = gptfyNamespace?.trim();
   if (!raw) return "AIIntentActionInterface";
@@ -363,6 +389,9 @@ export async function deployBundleToConnectedOrg(
     const fFlow = pickField(actf, "Flow_API_Name__c");
     const fApex = pickField(actf, "Apex_Class_Name__c");
     const fApexRet = pickField(actf, "Apex_Return_Type__c");
+    const actionTypePicklist = picklistValuesBySuffix(actf, "Action_Type__c");
+    const languagePicklist = picklistValuesBySuffix(actf, "Language__c");
+    const apexReturnPicklist = picklistValuesBySuffix(actf, "Apex_Return_Type__c");
 
     const fDetAct = pickField(dtf, "AI_Intent_Action__c");
     const fDetField = pickField(dtf, "Field_API_Name__c");
@@ -791,15 +820,33 @@ export async function deployBundleToConnectedOrg(
         const actBody: Record<string, unknown> = {
           [fActIntent!]: intentId,
         };
+        const normalizedActionType =
+          normalizePicklistValue(act.actionType, actionTypePicklist) ??
+          act.actionType;
         if (fActSeq) actBody[fActSeq] = act.seq;
-        if (fActType) actBody[fActType] = act.actionType;
-        const isCanned = (act.actionType ?? "").toLowerCase() === "canned response";
-        if (fLang && isCanned && act.language) actBody[fLang] = act.language;
+        if (fActType) actBody[fActType] = normalizedActionType;
+        const isCanned = lower(normalizedActionType) === "canned response";
+        if (fLang && isCanned && act.language) {
+          const normalizedLanguage =
+            normalizePicklistValue(act.language, languagePicklist) ?? act.language;
+          actBody[fLang] = normalizedLanguage;
+        }
         if (fCanned && isCanned && act.cannedText) actBody[fCanned] = act.cannedText;
         if (fObj && act.objectApiName) actBody[fObj] = act.objectApiName;
         if (fFlow && act.flowApiName) actBody[fFlow] = act.flowApiName;
         if (fApex && act.apexClass) actBody[fApex] = act.apexClass;
-        if (fApexRet && act.apexReturnType) actBody[fApexRet] = act.apexReturnType;
+        const isApex = lower(normalizedActionType) === "apex";
+        if (fApexRet && isApex) {
+          const normalizedApexReturn =
+            normalizePicklistValue(act.apexReturnType, apexReturnPicklist) ??
+            normalizePicklistValue("Map", apexReturnPicklist) ??
+            normalizePicklistValue("Map<String, Object>", apexReturnPicklist) ??
+            normalizePicklistValue("JSON", apexReturnPicklist) ??
+            apexReturnPicklist[0];
+          if (normalizedApexReturn) {
+            actBody[fApexRet] = normalizedApexReturn;
+          }
+        }
 
         const ar = await fetchWithRefresh(`sobjects/${actionApi}`, {
           method: "POST",
