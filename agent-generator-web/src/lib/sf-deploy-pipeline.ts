@@ -383,6 +383,8 @@ export async function deployBundleToConnectedOrg(
     const fActIntent = pickField(actf, "AI_Agent_Intent__c");
     const fActSeq = pickField(actf, "Sequence__c") ?? pickField(actf, "Seq__c");
     const fActType = pickField(actf, "Action_Type__c");
+    const fActDesc = pickField(actf, "Description__c");
+    const fActActive = pickField(actf, "Is_Active__c");
     const fLang = pickField(actf, "Language__c");
     const fCanned = pickField(actf, "Canned_Response_Text__c");
     const fObj = pickField(actf, "Object_API_Name__c");
@@ -397,6 +399,7 @@ export async function deployBundleToConnectedOrg(
     const fDetField = pickField(dtf, "Field_API_Name__c");
     const fDetType = pickField(dtf, "Type__c");
     const fDetVal = pickField(dtf, "Hardcoded_Value_Or_AI_Instruction__c");
+    const fDetActive = pickField(dtf, "Is_Active__c");
 
     const requiredPrompt = [fExt, fCmd, fClass, fConn, fMap, fType, fStat];
     if (requiredPrompt.some((x) => !x)) {
@@ -823,19 +826,45 @@ export async function deployBundleToConnectedOrg(
         const normalizedActionType =
           normalizePicklistValue(act.actionType, actionTypePicklist) ??
           act.actionType;
+        const actionTypeKey = lower(normalizedActionType);
         if (fActSeq) actBody[fActSeq] = act.seq;
         if (fActType) actBody[fActType] = normalizedActionType;
-        const isCanned = lower(normalizedActionType) === "canned response";
+        if (fActActive) actBody[fActActive] = true;
+        if (fActDesc) {
+          actBody[fActDesc] = `Intent ${plan.name} action: ${normalizedActionType}`;
+        }
+        const isCanned = actionTypeKey === "canned response";
         if (fLang && isCanned && act.language) {
           const normalizedLanguage =
-            normalizePicklistValue(act.language, languagePicklist) ?? act.language;
-          actBody[fLang] = normalizedLanguage;
+            normalizePicklistValue(act.language, languagePicklist) ??
+            languagePicklist[0];
+          if (normalizedLanguage) actBody[fLang] = normalizedLanguage;
+        }
+        if (fLang && isCanned && !act.language && languagePicklist.length > 0) {
+          actBody[fLang] = languagePicklist[0];
         }
         if (fCanned && isCanned && act.cannedText) actBody[fCanned] = act.cannedText;
+        if (isCanned && fCanned && !act.cannedText) {
+          pushErr(`Action for ${plan.name}: Canned Response missing cannedText`);
+          continue;
+        }
+        const isCreateOrUpdate = actionTypeKey === "create record" || actionTypeKey === "update field";
+        if (isCreateOrUpdate && !act.objectApiName) {
+          pushErr(`Action for ${plan.name}: ${normalizedActionType} missing objectApiName`);
+          continue;
+        }
+        if (isCreateOrUpdate && (!act.details || act.details.length === 0)) {
+          pushErr(`Action for ${plan.name}: ${normalizedActionType} missing detail mappings`);
+          continue;
+        }
         if (fObj && act.objectApiName) actBody[fObj] = act.objectApiName;
         if (fFlow && act.flowApiName) actBody[fFlow] = act.flowApiName;
         if (fApex && act.apexClass) actBody[fApex] = act.apexClass;
-        const isApex = lower(normalizedActionType) === "apex";
+        const isApex = actionTypeKey === "apex";
+        if (isApex && !act.apexClass) {
+          pushErr(`Action for ${plan.name}: Apex action missing apexClass`);
+          continue;
+        }
         if (fApexRet && isApex) {
           const normalizedApexReturn =
             normalizePicklistValue(act.apexReturnType, apexReturnPicklist) ??
@@ -867,6 +896,7 @@ export async function deployBundleToConnectedOrg(
             [fDetField]: d.fieldApiName,
             [fDetType]: d.type,
           };
+          if (fDetActive) db[fDetActive] = true;
           if (fDetVal && d.valueOrInstruction) db[fDetVal] = d.valueOrInstruction;
           const dr = await fetchWithRefresh(`sobjects/${detailApi}`, {
             method: "POST",
