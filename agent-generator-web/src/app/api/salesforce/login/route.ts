@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     redirect_uri: redirectUri,
     state,
     scope: "api refresh_token offline_access openid",
-    prompt: "consent",
+    prompt: "login consent",
   });
   if (codeChallenge) {
     params.set("code_challenge", codeChallenge);
