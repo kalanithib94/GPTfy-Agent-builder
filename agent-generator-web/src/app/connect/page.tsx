@@ -12,6 +12,13 @@ import { CopyCallback } from "./CopyCallback";
 
 type Props = { searchParams: { error?: string } };
 
+function maskClientId(id: string | undefined): string {
+  if (!id?.trim()) return "(not set)";
+  const s = id.trim();
+  if (s.length <= 18) return `${s.slice(0, 8)}…`;
+  return `${s.slice(0, 12)}…${s.slice(-8)}`;
+}
+
 export default async function ConnectPage({ searchParams }: Props) {
   const err = searchParams.error;
   const friendlyError = describeConnectError(err);
@@ -116,6 +123,22 @@ export default async function ConnectPage({ searchParams }: Props) {
             Current callback in use:{" "}
             <span className="text-neutral-300 break-all">{clientCfg.callbackUrl ?? "Not configured"}</span>
           </p>
+          <div className="mt-3 rounded-lg border border-neutral-600/40 bg-black/30 px-3 py-2.5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+              OAuth debug (values sent on connect)
+            </p>
+            <p className="mt-1.5 font-mono text-[11px] leading-relaxed text-emerald-200/95 break-all">
+              <span className="text-neutral-500">client_id</span> {maskClientId(clientCfg.clientId)}
+            </p>
+            <p className="mt-1 font-mono text-[11px] leading-relaxed text-cyan-200/95 break-all">
+              <span className="text-neutral-500">redirect_uri</span> {clientCfg.callbackUrl ?? "(not set)"}
+            </p>
+            <p className="mt-2 text-[10px] text-neutral-500">
+              Compare <code className="text-neutral-400">redirect_uri</code> byte-for-byte with Callback URL in the
+              same External Client App as this Consumer Key. If they differ, Salesforce returns{" "}
+              <code className="text-neutral-400">redirect_uri_mismatch</code>.
+            </p>
+          </div>
           <div className="mt-4">
             <ConnectActions ready={ready} />
           </div>
