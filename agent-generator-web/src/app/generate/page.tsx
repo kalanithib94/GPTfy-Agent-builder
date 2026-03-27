@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { GeneratedBundle } from "@/lib/generation-types";
 import type { IntentDeployPlan } from "@/lib/intent-deploy-types";
@@ -37,6 +37,89 @@ const TABS = [
   { id: "fullconfig", label: "FullConfig stub" },
   { id: "samples", label: "Sample prompts" },
 ] as const;
+
+type AccordionId = "deploy" | "brief" | "ids" | "advanced";
+
+const DEFAULT_ACCORDION: Record<AccordionId, boolean> = {
+  deploy: true,
+  brief: true,
+  ids: true,
+  advanced: false,
+};
+
+/** Expand/collapse with CSS grid so fields stay connected for HTML5 validation. */
+function FormAccordion({
+  sectionId,
+  title,
+  summary,
+  badge,
+  open,
+  onToggle,
+  children,
+}: {
+  sectionId: AccordionId;
+  title: string;
+  summary?: string;
+  badge?: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const panelId = `acc-panel-${sectionId}`;
+  const triggerId = `acc-trigger-${sectionId}`;
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]/25 overflow-hidden shadow-sm shadow-black/15">
+      <button
+        type="button"
+        id={triggerId}
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-3 py-3 text-left sm:px-4 hover:bg-white/[0.03] transition-colors"
+      >
+        <span
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border)] bg-black/30 text-[var(--muted)] transition-transform duration-200 ${
+            open ? "" : "-rotate-90"
+          }`}
+          aria-hidden
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-cyan-400/90"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-white">{title}</span>
+          {summary ? (
+            <span className="mt-0.5 block text-[11px] text-[var(--muted)] line-clamp-2 sm:line-clamp-1">
+              {summary}
+            </span>
+          ) : null}
+        </span>
+        {badge ? <span className="shrink-0">{badge}</span> : null}
+      </button>
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={triggerId}
+        className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden border-t border-[var(--border)]">
+          <div className="px-3 pb-3 pt-2 sm:px-4 sm:pb-4">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function GeneratePage() {
   const [session, setSession] = useState<SessionInfo | null>(null);
@@ -85,6 +168,12 @@ export default function GeneratePage() {
   const [deployLiveStatus, setDeployLiveStatus] = useState<string | null>(null);
   const [deployLiveSteps, setDeployLiveSteps] = useState<DeployStep[]>([]);
   const [deployLiveErrors, setDeployLiveErrors] = useState<string[]>([]);
+  const [accordionOpen, setAccordionOpen] =
+    useState<Record<AccordionId, boolean>>(DEFAULT_ACCORDION);
+
+  const toggleAccordion = useCallback((id: AccordionId) => {
+    setAccordionOpen((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
 
   const loadSession = useCallback(async () => {
     try {
@@ -140,6 +229,11 @@ export default function GeneratePage() {
 
   async function runFullPipeline(e?: React.MouseEvent) {
     e?.preventDefault();
+    if (useCase.trim().length < 10) {
+      setErr("Use case must be at least 10 characters.");
+      setAccordionOpen((prev) => ({ ...prev, brief: true }));
+      return;
+    }
     setErr(null);
     setBundle(null);
     setWarnings([]);
@@ -406,8 +500,40 @@ export default function GeneratePage() {
     ? renderTab(tab, bundle, copy, copied, { deployOutcome, session })
     : null;
 
+  const accordionSummaries = useMemo(() => {
+    const deploySummary = `${agentTargetMode === "new" ? "New agent" : "Update existing"} · merge ${
+      mergeExistingHandler ? "on" : "off"
+    } · intents ${intentDeployMode}`;
+    const ucLen = useCase.trim().length;
+    const hasStructured = intentResearchInstructions.trim().length > 0;
+    const briefSummary =
+      ucLen === 0
+        ? "Use case empty — required for generate"
+        : `${ucLen} chars · use case${hasStructured ? " · structured instructions" : ""}`;
+    const idsParts = [agentName.trim(), agentDeveloperName.trim(), handlerClass.trim()].filter(Boolean);
+    const idsSummary =
+      idsParts.length > 0 ? idsParts.slice(0, 3).join(" · ") : "Identifiers not filled yet";
+    const modelLabel = openaiModel.trim() || session?.openaiModel || "gpt-4.1";
+    const advancedSummary = useTemplateOnly
+      ? "Template only (no OpenAI)"
+      : `Model ${modelLabel}`;
+    return { deploySummary, briefSummary, idsSummary, advancedSummary };
+  }, [
+    agentTargetMode,
+    mergeExistingHandler,
+    intentDeployMode,
+    useCase,
+    intentResearchInstructions,
+    agentName,
+    agentDeveloperName,
+    handlerClass,
+    openaiModel,
+    session?.openaiModel,
+    useTemplateOnly,
+  ]);
+
   return (
-    <div className="space-y-10 lg:space-y-12">
+    <div className="space-y-6 lg:space-y-8 max-w-6xl mx-auto">
       <div>
         <p className="mb-1 text-xs font-medium uppercase tracking-wider text-cyan-400/80">Generate</p>
         <h1 className="text-2xl font-bold text-white sm:text-3xl">Use case → artifacts</h1>
@@ -458,8 +584,8 @@ export default function GeneratePage() {
               <strong className="text-white">Sync skill list to bundle</strong> (skills/prompts).
             </p>
             <p>
-              <strong className="text-white">Research box:</strong> Use{" "}
-              <strong className="text-white">Skills &amp; intents research</strong> below to tell the model exactly
+              <strong className="text-white">Structured instructions:</strong> In{" "}
+              <strong className="text-white">Use case &amp; extra AI instructions</strong>, use the structured field to tell the model
               which intents/skills to add, change, or drop — it is sent to OpenAI as primary guidance.
             </p>
           </div>
@@ -517,310 +643,314 @@ export default function GeneratePage() {
         </div>
       </div>
 
-      <form onSubmit={submit} className="space-y-6">
-        <div className="rounded-xl border border-cyan-900/50 bg-gradient-to-br from-cyan-950/40 to-black/40 px-4 py-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-white">1 · Agent target</h2>
-            <span className="text-[10px] uppercase tracking-wider text-cyan-300/80">Choose first</span>
-          </div>
-          <p className="text-xs text-[var(--muted)] leading-relaxed">
-            This only sets defaults (merge on/off). You still fill identifiers below — for an{" "}
-            <strong className="text-white/90">existing</strong> agent they must match Salesforce exactly.
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
+      <form onSubmit={submit} className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[11px] text-[var(--muted)]">Sections update as you type</span>
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
             <button
               type="button"
-              onClick={() => onAgentTargetChange("new")}
-              className={`text-left rounded-lg border px-4 py-3 transition ${
-                agentTargetMode === "new"
-                  ? "border-emerald-500/70 bg-emerald-950/35 ring-1 ring-emerald-500/40"
-                  : "border-[var(--border)] bg-black/20 hover:bg-white/5"
-              }`}
+              className="rounded-md border border-[var(--border)] bg-black/25 px-2.5 py-1 text-[var(--muted)] hover:text-white hover:bg-white/5"
+              onClick={() =>
+                setAccordionOpen({ deploy: true, brief: true, ids: true, advanced: true })
+              }
             >
-              <div className="text-sm font-semibold text-white">Create a new agent</div>
-              <div className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
-                New names in the org. Merge is turned <strong className="text-white/90">off</strong> by default (full
-                generated handler). Turn merge on if you already have a class to combine with.
-              </div>
+              Expand all
             </button>
             <button
               type="button"
-              onClick={() => onAgentTargetChange("existing")}
-              className={`text-left rounded-lg border px-4 py-3 transition ${
-                agentTargetMode === "existing"
-                  ? "border-cyan-500/70 bg-cyan-950/35 ring-1 ring-cyan-500/40"
-                  : "border-[var(--border)] bg-black/20 hover:bg-white/5"
-              }`}
+              className="rounded-md border border-[var(--border)] bg-black/25 px-2.5 py-1 text-[var(--muted)] hover:text-white hover:bg-white/5"
+              onClick={() =>
+                setAccordionOpen({
+                  deploy: false,
+                  brief: true,
+                  ids: false,
+                  advanced: false,
+                })
+              }
             >
-              <div className="text-sm font-semibold text-white">Update an existing agent</div>
-              <div className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
-                Same <strong className="text-white/90">Developer Name</strong>, <strong className="text-white/90">Handler</strong>, and{" "}
-                <strong className="text-white/90">External Id prefix</strong> as in Salesforce. Merge is{" "}
-                <strong className="text-white/90">on</strong> by default.
-              </div>
+              Collapse (keep use case open)
             </button>
           </div>
         </div>
 
-        <div className="max-w-2xl space-y-3 rounded-lg border border-[var(--border)] bg-[var(--surface)]/30 px-4 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-              2 · Salesforce deploy &amp; handler merge
-            </h2>
-            {agentTargetMode === "existing" ? (
-              <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200/95">
-                Updating existing
-              </span>
-            ) : (
-              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-200/95">
-                New agent path
-              </span>
-            )}
+        <FormAccordion
+          sectionId="deploy"
+          title="Deploy &amp; merge"
+          summary={accordionSummaries.deploySummary}
+          open={accordionOpen.deploy}
+          onToggle={() => toggleAccordion("deploy")}
+        >
+          <div className="rounded-lg border border-[var(--border)] bg-black/20 overflow-hidden -mx-1 sm:mx-0">
+            <div className="flex border-b border-[var(--border)] bg-black/25">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={agentTargetMode === "new"}
+                onClick={() => onAgentTargetChange("new")}
+                className={`flex-1 px-3 py-2.5 text-sm font-medium transition sm:px-4 ${
+                  agentTargetMode === "new"
+                    ? "text-white bg-emerald-950/50 border-b-2 border-b-emerald-500"
+                    : "text-[var(--muted)] hover:text-white hover:bg-white/5"
+                }`}
+              >
+                New agent
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={agentTargetMode === "existing"}
+                onClick={() => onAgentTargetChange("existing")}
+                className={`flex-1 px-3 py-2.5 text-sm font-medium transition sm:px-4 ${
+                  agentTargetMode === "existing"
+                    ? "text-white bg-cyan-950/50 border-b-2 border-b-cyan-500"
+                    : "text-[var(--muted)] hover:text-white hover:bg-white/5"
+                }`}
+              >
+                Update existing agent
+              </button>
+            </div>
+            <div className="px-3 py-2 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs text-[var(--muted)] border-b border-[var(--border)]/80">
+              {agentTargetMode === "new" ? (
+                <>
+                  <strong className="text-emerald-200/95">New:</strong> merge defaults off — full generated handler unless you enable merge below.
+                </>
+              ) : (
+                <>
+                  <strong className="text-cyan-200/95">Update:</strong> use the same Developer Name, Handler &amp; External Id prefix as in Salesforce; merge defaults on.
+                </>
+              )}
+            </div>
+            <div className="p-3 sm:p-4 grid lg:grid-cols-2 gap-4 lg:gap-6">
+              <div className="space-y-3 min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">Handler &amp; skills</p>
+                <label className="flex items-start gap-2 text-sm text-gray-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={mergeExistingHandler}
+                    onChange={(e) => setMergeExistingHandler(e.target.checked)}
+                    className="mt-0.5 rounded border-[var(--border)] shrink-0"
+                  />
+                  <span>
+                    <span className="font-medium text-white">Merge with org handler</span>
+                    <span className="block text-[var(--muted)] text-xs mt-0.5 leading-snug" title="Loads org Apex and combines with this bundle. Off = replace class with generated code only.">
+                      Combine with existing Apex in the org. Off = deploy replaces the whole class.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm text-gray-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={overwriteMatchingSkills}
+                    onChange={(e) => setOverwriteMatchingSkills(e.target.checked)}
+                    disabled={!mergeExistingHandler}
+                    className="mt-0.5 rounded border-[var(--border)] shrink-0 disabled:opacity-40"
+                  />
+                  <span className="text-xs leading-snug">
+                    <span className="font-medium text-white">Overwrite matching skills</span>
+                    <span className="text-[var(--muted)]"> — bundle wins for same skill name</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm text-gray-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={removeSkillsNotInBundle}
+                    onChange={(e) => setRemoveSkillsNotInBundle(e.target.checked)}
+                    className="mt-0.5 rounded border-[var(--border)] shrink-0"
+                  />
+                  <span className="text-xs leading-snug">
+                    <span className="font-medium text-white">Sync skills to bundle</span>
+                    <span className="text-[var(--muted)]"> — remove org prompts/skills not in bundle</span>
+                  </span>
+                </label>
+              </div>
+              <div className="space-y-2 min-w-0 lg:border-l lg:border-[var(--border)] lg:pl-6">
+                <label htmlFor="intent-deploy-mode" className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)] block">
+                  Intents in org
+                </label>
+                <select
+                  id="intent-deploy-mode"
+                  value={intentDeployMode}
+                  onChange={(e) => {
+                    const v = e.target.value as "create_only" | "upsert" | "sync";
+                    setIntentDeployMode(v);
+                    if (v !== "sync") setIntentSyncDeleteOrgWhenBundleEmpty(false);
+                  }}
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                >
+                  <option value="upsert">Upsert — update or create; replace actions</option>
+                  <option value="create_only">Create only — skip existing intents</option>
+                  <option value="sync">Sync — then remove intents not in bundle</option>
+                </select>
+                <p className="text-[11px] text-[var(--muted)] leading-snug">
+                  Empty bundle + sync skips deletes unless you opt in below.
+                </p>
+                {intentDeployMode === "sync" ? (
+                  <label className="flex items-start gap-2 rounded border border-amber-900/50 bg-amber-950/25 px-2 py-1.5 text-[11px] text-amber-100/95 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={intentSyncDeleteOrgWhenBundleEmpty}
+                      onChange={(e) => setIntentSyncDeleteOrgWhenBundleEmpty(e.target.checked)}
+                      className="mt-0.5 rounded border-[var(--border)] shrink-0"
+                    />
+                    <span>
+                      <span className="font-medium text-white">Wipe all intents</span> if bundle has zero intents (dangerous)
+                    </span>
+                  </label>
+                ) : null}
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)] mb-2">
-              Salesforce handler (Apex)
-            </p>
-            <label className="flex items-start gap-3 text-sm text-gray-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={mergeExistingHandler}
-                onChange={(e) => setMergeExistingHandler(e.target.checked)}
-                className="mt-1 rounded border-[var(--border)]"
-              />
-              <span>
-                <span className="font-medium text-white">Merge with existing handler in the org</span>
-                <span className="block text-[var(--muted)] text-[13px] mt-1 leading-relaxed">
-                  When <strong className="text-white/90">on</strong> (recommended for updates): loads the current Apex
-                  class from Salesforce, then merges it with the generated handler. New skills from this bundle are
-                  added; branches with the same skill name stay on the org version unless you enable &quot;Overwrite
-                  matching skills&quot; below. When <strong className="text-white/90">off</strong>: the deployed class is
-                  replaced entirely by generated code — use only if you want a full overwrite.
-                </span>
-              </span>
-            </label>
-          </div>
+        </FormAccordion>
 
-          <div className="border-t border-[var(--border)] pt-3 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-              Skill merge (only when merge is on)
-            </p>
-            <label className="flex items-start gap-3 text-sm text-gray-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={overwriteMatchingSkills}
-                onChange={(e) => setOverwriteMatchingSkills(e.target.checked)}
-                disabled={!mergeExistingHandler}
-                className="mt-1 rounded border-[var(--border)] disabled:opacity-40"
-              />
-              <span>
-                <span className="font-medium text-white">Overwrite matching skills</span>
-                <span className="block text-[var(--muted)] text-[13px] mt-1">
-                  For each skill name that exists in both org and bundle, use the <strong className="text-white/90">bundle</strong>{" "}
-                  <code className="text-cyan-200/90">when</code> branch (update logic).
-                </span>
+        <FormAccordion
+          sectionId="brief"
+          title="Use case &amp; extra AI instructions"
+          summary={accordionSummaries.briefSummary}
+          badge={
+            useCase.trim().length < 10 ? (
+              <span className="text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/25 text-amber-200/95 border border-amber-600/40">
+                Required
               </span>
-            </label>
-            <label className="flex items-start gap-3 text-sm text-gray-200 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={removeSkillsNotInBundle}
-                onChange={(e) => setRemoveSkillsNotInBundle(e.target.checked)}
-                className="mt-1 rounded border-[var(--border)]"
-              />
-              <span>
-                <span className="font-medium text-white">Sync skill list to this bundle</span>
-                <span className="block text-[var(--muted)] text-[13px] mt-1">
-                  Remove handler branches and <code className="text-cyan-200/90">AI_Prompt__c</code> rows for this
-                  handler that are <strong className="text-white/90">not</strong> in the bundle (same external-id
-                  prefix).
-                </span>
-              </span>
-            </label>
-          </div>
-
-          <div className="border-t border-[var(--border)] pt-3 flex flex-col gap-1">
-            <label htmlFor="intent-deploy-mode" className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-              Intent rows in Salesforce
-            </label>
-            <select
-              id="intent-deploy-mode"
-              value={intentDeployMode}
-              onChange={(e) => {
-                const v = e.target.value as "create_only" | "upsert" | "sync";
-                setIntentDeployMode(v);
-                if (v !== "sync") setIntentSyncDeleteOrgWhenBundleEmpty(false);
-              }}
-              className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            >
-              <option value="upsert">
-                Upsert (default) — create or update intents; replace actions from bundle
-              </option>
-              <option value="create_only">Create only — do not change intents that already exist</option>
-              <option value="sync">
-                Sync — upsert from bundle, then delete intents not listed in bundle
-              </option>
-            </select>
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              <strong className="text-white/90">Upsert</strong> matches by agent + intent name.{" "}
-              <strong className="text-white/90">Sync</strong> deletes extra org intents; if the bundle has{" "}
-              <strong className="text-white/90">no</strong> intents, nothing is deleted unless you opt in below.
-            </p>
-            {intentDeployMode === "sync" ? (
-              <label className="mt-2 flex items-start gap-2 rounded-md border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-100/95 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={intentSyncDeleteOrgWhenBundleEmpty}
-                  onChange={(e) => setIntentSyncDeleteOrgWhenBundleEmpty(e.target.checked)}
-                  className="mt-0.5 rounded border-[var(--border)]"
-                />
-                <span>
-                  <span className="font-medium text-white">Danger:</span> If the bundle has zero intents, still delete{" "}
-                  <strong className="text-white">all</strong> intents for this agent in the org. Use only when you
-                  intentionally want a full intent wipe (e.g. cleaning before a fresh plan).
-                </span>
+            ) : null
+          }
+          open={accordionOpen.brief}
+          onToggle={() => toggleAccordion("brief")}
+        >
+          <div className="grid xl:grid-cols-2 gap-4 xl:gap-5 items-start">
+            <div className="space-y-1.5 min-w-0">
+              <label className="block text-sm font-medium text-[var(--muted)]">
+                Use case <span className="text-red-400">*</span>
               </label>
-            ) : null}
-          </div>
-        </div>
+              <textarea
+                required
+                minLength={10}
+                rows={10}
+                value={useCase}
+                onChange={(e) => setUseCase(e.target.value)}
+                className="w-full min-h-[200px] rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                placeholder="Describe objects, actions, and guardrails (e.g. create Tasks on Account, never delete…)…"
+              />
+            </div>
+            <div className="rounded-lg border border-violet-800/50 bg-violet-950/15 px-3 py-3 space-y-3 min-w-0">
+              <div>
+                <h2 className="text-sm font-semibold text-violet-100">Extra instructions for the AI</h2>
+                <p className="text-[11px] text-[var(--muted)] mt-0.5">Sent to OpenAI (not in template-only mode).</p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-violet-200/95">Structured (skills, intents, deploy)</label>
+                <textarea
+                  rows={6}
+                  value={intentResearchInstructions}
+                  onChange={(e) => setIntentResearchInstructions(e.target.value)}
+                  placeholder={`Intent names, skill stems, constraints…
 
-        <div>
-          <label className="block text-sm font-medium text-[var(--muted)] mb-1">
-            3 · Use case <span className="text-red-400">*</span>
-          </label>
-          <textarea
-            required
-            minLength={10}
-            rows={6}
-            value={useCase}
-            onChange={(e) => setUseCase(e.target.value)}
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            placeholder="Describe objects, actions, and guardrails (e.g. create Tasks on Account, never delete…)…"
-          />
-        </div>
-
-        <div className="rounded-xl border-2 border-violet-600/50 bg-violet-950/20 px-4 py-4 space-y-4">
-          <div>
-            <h2 className="text-sm font-semibold text-white">4 · Extra instructions for the AI</h2>
-            <p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
-              These fields are sent to OpenAI when generating the bundle (not used in template-only mode). Use them to steer
-              skills, intents, and deploy behavior.
-            </p>
+Example: intents: greeting, find_case; skills: MyAgent_search —`}
+                  className="w-full rounded-md border border-violet-800/40 bg-black/40 px-2 py-1.5 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono min-h-[120px]"
+                />
+              </div>
+              <div className="space-y-1 border-t border-violet-800/30 pt-2">
+                <label className="text-xs font-medium text-violet-200/80">General notes (optional)</label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Tone, compliance, language…"
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+              </div>
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-violet-200">
-              Structured instructions (skills, intents, deploy) <span className="text-[var(--muted)] font-normal">— recommended</span>
-            </label>
-            <p className="text-xs text-[var(--muted)]">
-              List intent names, skill stems, flows, constraints, or &quot;do not generate&quot; rules. This is the main place
-              for upsert-style change lists.
-            </p>
-            <textarea
-              rows={8}
-              value={intentResearchInstructions}
-              onChange={(e) => setIntentResearchInstructions(e.target.value)}
-              placeholder={`Example bullets you can paste and edit:
+        </FormAccordion>
 
-- Intents to include: greeting, out_of_scope, escalate_case, find_case_details
-- New skill stems: MyAgent_find_case, MyAgent_add_note (must match handler when branches)
-- Replace intent "find_case_details" actions: first Flow X, then Apex class CaseLookupUtil
-- Do NOT add intents that only duplicate Case skills; keep 2 domain intents max
-- Org constraint: no delete DML; use Task create only`}
-              className="w-full rounded-md border border-violet-800/50 bg-black/35 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-violet-500 whitespace-pre-wrap font-mono"
-            />
-          </div>
-          <div className="space-y-2 border-t border-violet-800/30 pt-4">
-            <label className="block text-sm font-medium text-violet-200/90">
-              General notes <span className="text-[var(--muted)] font-normal">(optional)</span>
-            </label>
-            <p className="text-xs text-[var(--muted)]">
-              Short tone, compliance, or style preferences (not a substitute for structured instructions above).
-            </p>
-            <textarea
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. EU GDPR wording, avoid medical advice, preferred language…"
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            />
-          </div>
-        </div>
-
-        <div>
-          <h2 className="text-sm font-semibold text-white mb-3">5 · Agent identifiers &amp; GPTfy connections</h2>
+        <FormAccordion
+          sectionId="ids"
+          title="Agent identifiers &amp; GPTfy connections"
+          summary={accordionSummaries.idsSummary}
+          open={accordionOpen.ids}
+          onToggle={() => toggleAccordion("ids")}
+        >
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <Field
-            label="Agent name"
-            value={agentName}
-            onChange={setAgentName}
-            placeholder="My Support Agent"
-          />
-          <Field
-            label="Agent Developer Name"
-            value={agentDeveloperName}
-            onChange={setAgentDeveloperName}
-            placeholder="My_Support_Agent"
-          />
-          <Field
-            label="Handler class"
-            value={handlerClass}
-            onChange={setHandlerClass}
-            placeholder="MySupportAgenticHandler"
-          />
-          <Field
-            label="External Id prefix"
-            value={externalIdPrefix}
-            onChange={setExternalIdPrefix}
-            placeholder="UC:MY_AGENT:"
-          />
-          <Field
-            label="Prompt connection name"
-            value={connectionName}
-            onChange={setConnectionName}
-            placeholder="GPTfy (OpenAI)"
-          />
-          <Field
-            label="Agentic model connection"
-            value={agentModelConnectionName}
-            onChange={setAgentModelConnectionName}
-            placeholder="Response API Agentic"
-          />
-          <Field
-            label="Data extraction mapping"
-            value={dataMappingName}
-            onChange={setDataMappingName}
-            className="sm:col-span-2 xl:col-span-3"
-            placeholder="Account 360 view - GPTfy"
-          />
+            <Field
+              label="Agent name"
+              value={agentName}
+              onChange={setAgentName}
+              placeholder="My Support Agent"
+            />
+            <Field
+              label="Agent Developer Name"
+              value={agentDeveloperName}
+              onChange={setAgentDeveloperName}
+              placeholder="My_Support_Agent"
+            />
+            <Field
+              label="Handler class"
+              value={handlerClass}
+              onChange={setHandlerClass}
+              placeholder="MySupportAgenticHandler"
+            />
+            <Field
+              label="External Id prefix"
+              value={externalIdPrefix}
+              onChange={setExternalIdPrefix}
+              placeholder="UC:MY_AGENT:"
+            />
+            <Field
+              label="Prompt connection name"
+              value={connectionName}
+              onChange={setConnectionName}
+              placeholder="GPTfy (OpenAI)"
+            />
+            <Field
+              label="Agentic model connection"
+              value={agentModelConnectionName}
+              onChange={setAgentModelConnectionName}
+              placeholder="Response API Agentic"
+            />
+            <Field
+              label="Data extraction mapping"
+              value={dataMappingName}
+              onChange={setDataMappingName}
+              className="sm:col-span-2 xl:col-span-3"
+              placeholder="Account 360 view - GPTfy"
+            />
           </div>
-        </div>
+        </FormAccordion>
 
-        <div className="max-w-xl">
-          <label className="block text-sm font-medium text-[var(--muted)] mb-1">
-            6 · OpenAI model (optional override)
-          </label>
-          <input
-            type="text"
-            value={openaiModel}
-            onChange={(e) => setOpenaiModel(e.target.value)}
-            placeholder={session?.openaiModel || "gpt-4.1"}
-            className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm"
-          />
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            Leave as default (<code>gpt-4.1</code>), or set another model ID (example:{" "}
-            <code>gpt-4.1-mini</code>).
-          </p>
-        </div>
-
-        <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer">
-          <input
-            type="checkbox"
-            checked={useTemplateOnly}
-            onChange={(e) => setUseTemplateOnly(e.target.checked)}
-            className="rounded border-[var(--border)]"
-          />
-          Force template only (skip OpenAI even if configured)
-        </label>
+        <FormAccordion
+          sectionId="advanced"
+          title="Generation options"
+          summary={accordionSummaries.advancedSummary}
+          open={accordionOpen.advanced}
+          onToggle={() => toggleAccordion("advanced")}
+        >
+          <div className="space-y-3 max-w-xl">
+            <div>
+              <label className="block text-sm font-medium text-[var(--muted)] mb-1">
+                OpenAI model (optional override)
+              </label>
+              <input
+                type="text"
+                value={openaiModel}
+                onChange={(e) => setOpenaiModel(e.target.value)}
+                placeholder={session?.openaiModel || "gpt-4.1"}
+                className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] font-mono text-sm"
+              />
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Leave as default (<code>gpt-4.1</code>), or set another model ID (example:{" "}
+                <code>gpt-4.1-mini</code>).
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useTemplateOnly}
+                onChange={(e) => setUseTemplateOnly(e.target.checked)}
+                className="rounded border-[var(--border)]"
+              />
+              Force template only (skip OpenAI even if configured)
+            </label>
+          </div>
+        </FormAccordion>
 
         {warnings.length > 0 ? (
           <ul className="rounded-md border border-amber-800/60 bg-amber-950/30 px-3 py-2 text-sm text-amber-100 list-disc list-inside">
