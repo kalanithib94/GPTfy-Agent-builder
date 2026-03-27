@@ -180,6 +180,18 @@ function validateSystemPromptQuality(systemPrompt: string): string | null {
   return null;
 }
 
+function compactUseCaseForGeneration(useCase: string): string {
+  const lines = useCase
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (lines.length >= 2) return lines.slice(0, 2).join("\n");
+  const one = lines[0] ?? useCase.trim();
+  const parts = one.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0]} ${parts[1]}`.trim();
+  return one.slice(0, 320);
+}
+
 const DISALLOWED_REQUIRED_SKILL_FIELDS = new Set([
   "ownerid",
   "createdbyid",
@@ -544,6 +556,22 @@ export async function generateWithOpenAI(
     if (/case\s+'[^']+'\s*:/.test(apex) || /\bcase\s+[A-Za-z0-9_]+\s*:/.test(apex)) {
       return "invalid Apex switch syntax (case:) — use switch on ... when ... { }";
     }
+    // JS-style object maps in Apex are invalid (must use => in Map literal).
+    if (/'[A-Za-z0-9_]+'\s*:/.test(apex)) {
+      return "invalid map/object syntax with ':' detected; Apex map literals require '=>'";
+    }
+    // Apex boolean operators must be && and ||, not AND/OR in code conditions.
+    if (/\bif\s*\([^)]*\bAND\b/i.test(apex) || /\bif\s*\([^)]*\bOR\b/i.test(apex)) {
+      return "invalid boolean operator in Apex condition; use && / || instead of AND / OR";
+    }
+    // Invalid describe access pattern frequently hallucinated by LLMs.
+    if (/Schema\.sObjectType\.get\s*\(/.test(apex)) {
+      return "invalid Schema.sObjectType.get(...) usage";
+    }
+    // Enforce safer baseline: no hardcoded custom field API names in handler SOQL.
+    if (/\bSELECT[\s\S]{0,600}?\b[A-Za-z0-9_]+__c\b/i.test(apex)) {
+      return "hardcoded custom __c fields detected in handler SOQL; use standard fields or describe-driven resolution";
+    }
     // SOQL assignment with LIMIT 1 throws QueryException when no rows; null check afterward is ineffective.
     if (
       /=\s*\[\s*SELECT[\s\S]{0,300}?LIMIT\s+1\s*\];\s*if\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*==\s*null\s*\)/.test(
@@ -592,6 +620,10 @@ handlerApex requirements:
 - For "find by Id" queries, do NOT use "SObject x = [SELECT ... LIMIT 1]; if (x == null)". Use list query + isEmpty() and return friendly error when not found.
 - Validate required input parameters in each skill and return err(...) when missing.
 - Keep each skill branch small by delegating to private helper methods (e.g., handleFindOpportunity(parameters)).
+- Prefer standard Salesforce fields in handler SOQL (Id, Name, StageName, CloseDate, AccountId, OwnerId, Status, Priority, Subject, ActivityDate).
+- Do not hardcode custom fields (anything ending in __c) in handler SOQL unless they are first resolved/validated from org metadata.
+- Never use JS-style object syntax ('key': value) in Apex; use Map literals with =>.
+- Never write if (...) conditions with AND / OR; use && / ||.
 
 agentSystemPrompt quality requirements:
 - Minimum 500 characters, with explicit sections for responsibilities, tool usage, safety, error handling, and response style.
@@ -656,8 +688,10 @@ Include sections for:
 - RESPONSE STYLE
 and explicitly state "Never claim success without tool JSON showing success=true".`;
 
+  const compactUseCase = compactUseCaseForGeneration(useCase);
   const user = JSON.stringify({
-    useCase,
+    useCase: compactUseCase,
+    originalUseCase: useCase,
     notes: notes ?? null,
     org: orgContext,
     handlerClass: params.handlerClass,

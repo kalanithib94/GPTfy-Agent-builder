@@ -219,6 +219,26 @@ function stripCodeFences(text: string): string {
     .trim();
 }
 
+function preflightValidateHandlerApex(apex: string): string[] {
+  const issues: string[] = [];
+  if (/'[A-Za-z0-9_]+'\s*:/.test(apex)) {
+    issues.push("JS-style key:value syntax detected; Apex Map literals must use =>");
+  }
+  if (/\bif\s*\([^)]*\bAND\b/i.test(apex) || /\bif\s*\([^)]*\bOR\b/i.test(apex)) {
+    issues.push("Invalid boolean operators in if-condition; use && and ||");
+  }
+  if (/Schema\.sObjectType\.get\s*\(/.test(apex)) {
+    issues.push("Invalid Schema.sObjectType.get(...) pattern detected");
+  }
+  if (/case\s+'[^']+'\s*:/.test(apex) || /\bcase\s+[A-Za-z0-9_]+\s*:/.test(apex)) {
+    issues.push("Java-style switch case syntax detected; use switch on ... when ...");
+  }
+  if (/\bSELECT[\s\S]{0,600}?\b[A-Za-z0-9_]+__c\b/i.test(apex)) {
+    issues.push("Hardcoded custom __c field in handler SOQL; use standard fields or metadata-safe resolution");
+  }
+  return issues;
+}
+
 async function generateIntentActionApexWithOpenAI(args: {
   className: string;
   interfaceSymbol: string;
@@ -547,6 +567,15 @@ export async function deployBundleToConnectedOrg(
     } else {
       addStep("Resolve skill name collisions", true, "no conflicts found");
     }
+
+    const preflightIssues = preflightValidateHandlerApex(bundle.handlerApex);
+    if (preflightIssues.length > 0) {
+      const reason = preflightIssues.join(" | ");
+      addStep("Preflight validate handler Apex", false, reason);
+      pushErr(`Handler Apex preflight failed: ${reason}`);
+      return { ok: false, steps, errors };
+    }
+    addStep("Preflight validate handler Apex", true);
 
     const meta = await deployApexClassMetadata(
       instanceUrl,
