@@ -44,6 +44,22 @@ type GenerateWithOpenAIOptions = {
 
 type IntentPlanItem = NonNullable<z.infer<typeof llmShape>["intentDeployPlan"]>[number];
 
+function stripNullOptionals(value: unknown): unknown {
+  if (value === null) return undefined;
+  if (Array.isArray(value)) {
+    return value.map((v) => stripNullOptionals(v));
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const next = stripNullOptionals(v);
+      if (next !== undefined) out[k] = next;
+    }
+    return out;
+  }
+  return value;
+}
+
 function promptStemFromFileName(fileName: string): string {
   const base = fileName.replace(/\.json$/i, "");
   return base.replace(/(_prompt)?command$/i, "").replace(/_+$/, "").trim();
@@ -824,7 +840,8 @@ and explicitly state "Never claim success without tool JSON showing success=true
       };
     }
 
-    const shape = llmShape.safeParse(inner);
+    const normalizedInner = stripNullOptionals(inner);
+    const shape = llmShape.safeParse(normalizedInner);
     if (!shape.success) {
       return {
         ok: false,
