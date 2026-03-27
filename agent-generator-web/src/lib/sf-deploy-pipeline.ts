@@ -219,7 +219,7 @@ function stripCodeFences(text: string): string {
     .trim();
 }
 
-function preflightValidateHandlerApex(apex: string): string[] {
+function preflightValidateHandlerApex(apex: string, availableObjects?: Set<string>): string[] {
   const issues: string[] = [];
   if (/'[A-Za-z0-9_]+'\s*:/.test(apex)) {
     issues.push("JS-style key:value syntax detected; Apex Map literals must use =>");
@@ -236,7 +236,57 @@ function preflightValidateHandlerApex(apex: string): string[] {
   if (/\bSELECT[\s\S]{0,600}?\b[A-Za-z0-9_]+__c\b/i.test(apex)) {
     issues.push("Hardcoded custom __c field in handler SOQL; use standard fields or metadata-safe resolution");
   }
+  if (availableObjects && availableObjects.size > 0) {
+    const missing = extractReferencedObjectsFromApex(apex).filter(
+      (obj) => !availableObjects.has(obj)
+    );
+    if (missing.length > 0) {
+      issues.push(
+        `Handler references unavailable objects: ${Array.from(new Set(missing)).join(", ")}`
+      );
+    }
+  }
   return issues;
+}
+
+function extractReferencedObjectsFromApex(apex: string): string[] {
+  const refs = new Set<string>();
+  const primitiveOrUtility = new Set([
+    "string",
+    "integer",
+    "long",
+    "double",
+    "decimal",
+    "boolean",
+    "date",
+    "datetime",
+    "time",
+    "id",
+    "object",
+    "map",
+    "list",
+    "set",
+    "schema",
+    "system",
+    "exception",
+    "userinfo",
+    "math",
+    "json",
+  ]);
+  const take = (re: RegExp) => {
+    let m: RegExpExecArray | null = null;
+    while ((m = re.exec(apex)) !== null) {
+      const name = (m[1] ?? "").trim();
+      if (!name) continue;
+      if (primitiveOrUtility.has(name.toLowerCase())) continue;
+      refs.add(name);
+    }
+  };
+  take(/\bfrom\s+([A-Za-z_][A-Za-z0-9_]*)\b/gi);
+  take(/\bnew\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g);
+  take(/\bSchema\.sObjectType\.([A-Za-z_][A-Za-z0-9_]*)\b/g);
+  take(/\b(?:List|Set)\s*<\s*([A-Za-z_][A-Za-z0-9_]*)\s*>/g);
+  return Array.from(refs);
 }
 
 async function generateIntentActionApexWithOpenAI(args: {
@@ -505,6 +555,23 @@ export async function deployBundleToConnectedOrg(
       throw new Error("Missing AI_Connection__c field: Type__c");
     }
 
+    const sObjRes = await fetchWithRefresh("sobjects");
+    const availableObjects = new Set<string>();
+    if (sObjRes.ok && sObjRes.json && typeof sObjRes.json === "object") {
+      const rows = (sObjRes.json as { sobjects?: { name?: string }[] }).sobjects;
+      if (Array.isArray(rows)) {
+        for (const row of rows) {
+          const name = String(row?.name ?? "").trim();
+          if (name) availableObjects.add(name);
+        }
+      }
+    }
+    addStep(
+      "Load org object catalog",
+      availableObjects.size > 0,
+      availableObjects.size > 0 ? `${availableObjects.size} objects` : "Could not load sobjects list"
+    );
+
     // Guard against org-wide skill-name collisions before we deploy/update handler + prompts.
     // If a prompt Name already exists for a different external id, rename the new skill stem
     // and rewrite handler switch branches to keep skill dispatch aligned.
@@ -568,7 +635,7 @@ export async function deployBundleToConnectedOrg(
       addStep("Resolve skill name collisions", true, "no conflicts found");
     }
 
-    const preflightIssues = preflightValidateHandlerApex(bundle.handlerApex);
+    const preflightIssues = preflightValidateHandlerApex(bundle.handlerApex, availableObjects);
     if (preflightIssues.length > 0) {
       const reason = preflightIssues.join(" | ");
       addStep("Preflight validate handler Apex", false, reason);
@@ -787,7 +854,7 @@ export async function deployBundleToConnectedOrg(
       if (rows[0]?.Id) return true;
 
       const iface = resolveIntentActionInterfaceSymbol(session.gptfyNamespace);
-      const aiBody =
+      let aiBody =
         openaiKey ?
           await generateIntentActionApexWithOpenAI({
             className,
@@ -799,6 +866,19 @@ export async function deployBundleToConnectedOrg(
             apiKey: openaiKey,
           })
         : null;
+      if (aiBody && availableObjects.size > 0) {
+        const missing = extractReferencedObjectsFromApex(aiBody).filter(
+          (obj) => !availableObjects.has(obj)
+        );
+        if (missing.length > 0) {
+          aiBody = null;
+          provisionNotes.push(
+            `Apex dependency ${className}: skipped AI body due to unavailable objects (${Array.from(
+              new Set(missing)
+            ).join(", ")}), using safe fallback`
+          );
+        }
+      }
       const fallback = buildIntentActionApexStub(className, session.gptfyNamespace, purpose);
       // Try AI-generated class first (if available), then hard fallback stub if compile fails.
       // This prevents org-specific field assumptions from blocking deploy.
