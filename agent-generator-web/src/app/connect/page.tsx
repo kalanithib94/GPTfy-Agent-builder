@@ -99,8 +99,23 @@ export default async function ConnectPage({ searchParams }: Props) {
         </div>
 
         <div className="border-t border-[var(--border)] pt-6">
-          <h2 className="text-sm font-semibold text-white">Step 2: connect with Salesforce browser login</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold text-white">Step 2: connect with Salesforce browser login</h2>
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                cfg.source === "session" ?
+                  "bg-cyan-500/20 text-cyan-200"
+                : "bg-amber-500/20 text-amber-200"
+              }`}
+            >
+              Auth source: {cfg.source === "session" ? "Session override" : "Server env default"}
+            </span>
+          </div>
           <p className="mt-1 text-xs text-neutral-500">This is the only supported path for most External Client Apps.</p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Current callback in use:{" "}
+            <span className="text-neutral-300 break-all">{clientCfg.callbackUrl ?? "Not configured"}</span>
+          </p>
           <div className="mt-4">
             <ConnectActions ready={ready} />
           </div>
