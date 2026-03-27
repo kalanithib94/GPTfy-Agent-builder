@@ -289,6 +289,76 @@ function extractReferencedObjectsFromApex(apex: string): string[] {
   return Array.from(refs);
 }
 
+function sanitizePromptCommandAgainstOrg(
+  content: string,
+  availableObjects: Set<string>
+): { content: string; changed: boolean; skipped: boolean; note?: string } {
+  if (availableObjects.size === 0) return { content, changed: false, skipped: false };
+  try {
+    const parsed = JSON.parse(content) as {
+      properties?: Record<string, { enum?: unknown[]; const?: unknown; default?: unknown }>;
+      required?: string[];
+      [k: string]: unknown;
+    };
+    if (!parsed || typeof parsed !== "object") return { content, changed: false, skipped: false };
+    const props = parsed.properties ?? {};
+    let changed = false;
+    const removedProps: string[] = [];
+    for (const key of Object.keys(props)) {
+      const norm = key.toLowerCase();
+      const looksLikeObjectSelector =
+        norm.includes("objectapi") ||
+        norm.includes("object_name") ||
+        norm === "object" ||
+        norm.includes("sobject");
+      if (!looksLikeObjectSelector) continue;
+      const p = props[key];
+      if (Array.isArray(p?.enum)) {
+        const next = p.enum.filter((v) => typeof v !== "string" || availableObjects.has(v));
+        if (next.length !== p.enum.length) {
+          p.enum = next;
+          changed = true;
+        }
+        if (next.length === 0) {
+          delete props[key];
+          removedProps.push(key);
+          changed = true;
+        }
+      } else if (typeof p?.const === "string" && !availableObjects.has(p.const)) {
+        delete props[key];
+        removedProps.push(key);
+        changed = true;
+      } else if (typeof p?.default === "string" && !availableObjects.has(p.default)) {
+        delete p.default;
+        changed = true;
+      }
+    }
+    if (removedProps.length > 0 && Array.isArray(parsed.required)) {
+      parsed.required = parsed.required.filter((k) => !removedProps.includes(String(k)));
+      changed = true;
+    }
+    if (!changed) return { content, changed: false, skipped: false };
+    return {
+      content: JSON.stringify(parsed, null, 2),
+      changed: true,
+      skipped: false,
+      note: removedProps.length ? `removed unsupported object selector fields: ${removedProps.join(", ")}` : "normalized object selector defaults/enums",
+    };
+  } catch {
+    return { content, changed: false, skipped: false };
+  }
+}
+
+function isMetadataUnavailableError(text: string): boolean {
+  const t = text.toLowerCase();
+  return (
+    t.includes("no such column") ||
+    t.includes("invalid_field") ||
+    t.includes("sobject type") && t.includes("not supported") ||
+    t.includes("entity type") && t.includes("cannot be queried")
+  );
+}
+
 async function generateIntentActionApexWithOpenAI(args: {
   className: string;
   interfaceSymbol: string;
@@ -714,17 +784,22 @@ export async function deployBundleToConnectedOrg(
 
     const handlerName = bundle.parameters.handlerClass;
 
+    const promptNotes: string[] = [];
     for (const pc of bundle.promptCommands) {
       const stem = promptStemFromFileName(pc.fileName);
       if (!stem) continue;
       const extVal = `${extPrefix}${stem}`;
+      const sanitizedPrompt = sanitizePromptCommandAgainstOrg(pc.content, availableObjects);
+      if (sanitizedPrompt.changed && sanitizedPrompt.note) {
+        promptNotes.push(`${stem}: ${sanitizedPrompt.note}`);
+      }
       const body: Record<string, unknown> = {
         Name: truncateName(stem, 80),
         [fType!]: "Agentic",
         [fStat!]: "Active",
         [fConn!]: promptConnId,
         [fMap!]: mapId,
-        [fCmd!]: pc.content,
+        [fCmd!]: sanitizedPrompt.content,
         [fClass!]: handlerName,
       };
 
@@ -737,7 +812,11 @@ export async function deployBundleToConnectedOrg(
         throw new Error(`Prompt upsert failed ${stem}: ${patch.text.slice(0, 400)}`);
       }
     }
-    addStep(`Upsert ${bundle.promptCommands.length} AI_Prompt__c`, true);
+    addStep(
+      `Upsert ${bundle.promptCommands.length} AI_Prompt__c`,
+      true,
+      promptNotes.length ? `normalized ${promptNotes.length} prompt command(s)` : undefined
+    );
 
     const extKeys = bundle.promptCommands
       .map((pc) => `${extPrefix}${promptStemFromFileName(pc.fileName)}`)
@@ -1101,6 +1180,7 @@ export async function deployBundleToConnectedOrg(
     );
 
     let intentsCreated = 0;
+    const skippedActionNotes: string[] = [];
     for (const plan of plans) {
       if (existingNames.has(plan.name)) {
         addStep(`Intent skip (exists): ${plan.name}`, true);
@@ -1180,8 +1260,8 @@ export async function deployBundleToConnectedOrg(
           if (!targetFields) {
             const d = await describeSObject(instanceUrl, token, API_VER, objApi);
             if (!d.ok) {
-              pushErr(
-                `Action for ${plan.name}: cannot describe object ${objApi} (${d.status})`
+              skippedActionNotes.push(
+                `Skipped ${plan.name} action (${normalizedActionType}): object ${objApi} not available`
               );
               continue;
             }
@@ -1196,8 +1276,8 @@ export async function deployBundleToConnectedOrg(
               detail.fieldApiName
             );
             if (!resolvedField) {
-              pushErr(
-                `Action for ${plan.name}: field ${detail.fieldApiName} not found on ${objApi}`
+              skippedActionNotes.push(
+                `Skipped ${plan.name} action (${normalizedActionType}): field ${detail.fieldApiName} not found on ${objApi}`
               );
               invalidDetail = true;
               break;
@@ -1209,8 +1289,8 @@ export async function deployBundleToConnectedOrg(
               if (pickVals.length > 0) {
                 const mapped = normalizePicklistValue(normalizedVal, pickVals);
                 if (!mapped) {
-                  pushErr(
-                    `Action for ${plan.name}: invalid picklist value "${normalizedVal}" for ${objApi}.${resolvedField}`
+                  skippedActionNotes.push(
+                    `Skipped ${plan.name} action (${normalizedActionType}): invalid picklist "${normalizedVal}" for ${objApi}.${resolvedField}`
                   );
                   invalidDetail = true;
                   break;
@@ -1232,7 +1312,9 @@ export async function deployBundleToConnectedOrg(
         if (fApex && act.apexClass) actBody[fApex] = act.apexClass;
         const isApex = actionTypeKey === "apex";
         if (isApex && !act.apexClass) {
-          pushErr(`Action for ${plan.name}: Apex action missing apexClass`);
+          skippedActionNotes.push(
+            `Skipped ${plan.name} action (${normalizedActionType}): missing apexClass`
+          );
           continue;
         }
         if (fApexRet && isApex) {
@@ -1252,7 +1334,13 @@ export async function deployBundleToConnectedOrg(
           body: JSON.stringify(actBody),
         });
         if (!ar.ok) {
-          pushErr(`Action for ${plan.name}: ${ar.text.slice(0, 250)}`);
+          if (isMetadataUnavailableError(ar.text)) {
+            skippedActionNotes.push(
+              `Skipped ${plan.name} action (${normalizedActionType}) due to unavailable metadata`
+            );
+          } else {
+            pushErr(`Action for ${plan.name}: ${ar.text.slice(0, 250)}`);
+          }
           continue;
         }
         const actionId = (ar.json as { id?: string })?.id;
@@ -1275,7 +1363,13 @@ export async function deployBundleToConnectedOrg(
             body: JSON.stringify(db),
           });
           if (!dr.ok) {
-            pushErr(`Detail ${plan.name}: ${dr.text.slice(0, 200)}`);
+            if (isMetadataUnavailableError(dr.text)) {
+              skippedActionNotes.push(
+                `Skipped detail for ${plan.name} action field ${d.fieldApiName}: unavailable metadata`
+              );
+            } else {
+              pushErr(`Detail ${plan.name}: ${dr.text.slice(0, 200)}`);
+            }
           }
         }
       }
@@ -1283,7 +1377,11 @@ export async function deployBundleToConnectedOrg(
     addStep(
       `Intent / action rows (${intentsCreated} new intents)`,
       errors.length === 0 || intentsCreated > 0,
-      errors.length ? "Some rows may have failed — see errors" : undefined
+      errors.length ?
+        "Some rows may have failed — see errors"
+      : skippedActionNotes.length ?
+        `Skipped ${skippedActionNotes.length} row(s) due to unavailable metadata`
+      : undefined
     );
 
     if (errors.length > 0) {
