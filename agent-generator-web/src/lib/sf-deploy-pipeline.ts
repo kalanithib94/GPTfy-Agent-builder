@@ -288,6 +288,70 @@ function extractReferencedObjectsFromApex(apex: string): string[] {
   return Array.from(refs);
 }
 
+function resolveAgenticInterfaceSymbol(gptfyNamespace?: string): string {
+  const raw = gptfyNamespace?.trim();
+  if (!raw) return "AIAgenticInterface";
+  const noSuffix = raw.replace(/__$/, "");
+  if (!noSuffix) return "AIAgenticInterface";
+  return `${noSuffix}.AIAgenticInterface`;
+}
+
+function buildSafeFallbackHandlerApex(
+  handlerClass: string,
+  gptfyNamespace: string | undefined,
+  skillNames: string[]
+): string {
+  const iface = resolveAgenticInterfaceSymbol(gptfyNamespace);
+  const uniqueSkills = Array.from(new Set(skillNames.filter(Boolean)));
+  const switchBranches = uniqueSkills.length
+    ? uniqueSkills
+        .map(
+          (s) => `                when '${s}' {
+                    return ok(new Map<String, Object>{
+                        'status' => 'fallback',
+                        'skill' => '${s}',
+                        'message' => 'Fallback handler executed. Replace generated logic for full behavior.'
+                    });
+                }`
+        )
+        .join("\n")
+    : `                when 'health_Check_Agent' {
+                    return ok(new Map<String, Object>{
+                        'status' => 'fallback',
+                        'message' => 'Fallback handler executed. Replace generated logic for full behavior.'
+                    });
+                }`;
+  return `global with sharing class ${handlerClass} implements ${iface} {
+    private String err(String msg) {
+        return JSON.serialize(new Map<String, Object>{
+            'success' => false,
+            'status' => 'error',
+            'message' => msg
+        });
+    }
+
+    private String ok(Map<String, Object> body) {
+        body.put('success', true);
+        return JSON.serialize(body);
+    }
+
+    global String executeMethod(String requestParam, Map<String, Object> parameters) {
+        try {
+            if (parameters == null) parameters = new Map<String, Object>();
+            switch on requestParam {
+${switchBranches}
+                when else {
+                    return err('Unsupported skill: ' + requestParam);
+                }
+            }
+        } catch (Exception ex) {
+            System.debug(LoggingLevel.ERROR, '${handlerClass} | EXCEPTION | ' + ex.getMessage());
+            return err(ex.getMessage());
+        }
+    }
+}`;
+}
+
 function sanitizePromptCommandAgainstOrg(
   content: string,
   availableObjects: Set<string>
@@ -705,19 +769,40 @@ export async function deployBundleToConnectedOrg(
     }
 
     const preflightIssues = preflightValidateHandlerApex(bundle.handlerApex, availableObjects);
+    let handlerApexToDeploy = bundle.handlerApex;
     if (preflightIssues.length > 0) {
-      const reason = preflightIssues.join(" | ");
-      addStep("Preflight validate handler Apex", false, reason);
-      pushErr(`Handler Apex preflight failed: ${reason}`);
-      return { ok: false, steps, errors };
+      const onlyUnavailableObjectIssue = preflightIssues.every((x) =>
+        x.startsWith("Handler references unavailable objects:")
+      );
+      if (onlyUnavailableObjectIssue) {
+        const skillNames = bundle.promptCommands
+          .map((pc) => promptStemFromFileName(pc.fileName))
+          .filter(Boolean);
+        handlerApexToDeploy = buildSafeFallbackHandlerApex(
+          bundle.parameters.handlerClass,
+          session.gptfyNamespace,
+          skillNames
+        );
+        addStep(
+          "Preflight validate handler Apex",
+          true,
+          `Unavailable objects in generated handler; deployed safe fallback handler instead (${preflightIssues.join(" | ")})`
+        );
+      } else {
+        const reason = preflightIssues.join(" | ");
+        addStep("Preflight validate handler Apex", false, reason);
+        pushErr(`Handler Apex preflight failed: ${reason}`);
+        return { ok: false, steps, errors };
+      }
+    } else {
+      addStep("Preflight validate handler Apex", true);
     }
-    addStep("Preflight validate handler Apex", true);
 
     const meta = await deployApexClassMetadata(
       instanceUrl,
       token,
       bundle.parameters.handlerClass,
-      bundle.handlerApex,
+      handlerApexToDeploy,
       bundle.handlerMetaXml
     );
     if (!meta.ok) {
