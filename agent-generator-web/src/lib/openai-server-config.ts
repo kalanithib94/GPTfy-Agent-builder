@@ -49,7 +49,7 @@ export async function getOpenAIKeyHint(): Promise<string | null> {
 }
 
 export function getOpenAIModel(): string {
-  return process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
+  return process.env.OPENAI_MODEL?.trim() || "gpt-4.1";
 }
 
 export function isUpstashConfigured(): boolean {

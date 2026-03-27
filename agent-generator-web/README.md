@@ -9,7 +9,7 @@ Standalone Next.js app: **Salesforce OAuth** → **namespace-aware GPTfy metadat
 - **Field checks** — Key suffixes on `AI_Prompt__c`, `AI_Agent__c`, `AI_Connection__c`, `AI_Agent_Skill__c` aligned with `scripts/Deploy-GptfyUseCasePipeline.ps1`.
 - **Generator** — Use case + pipeline parameters → **full bundle**: Apex class + meta.xml, `*_PromptCommand.json`, `AGENT_SYSTEM_PROMPT.txt`, `AGENT_DESCRIPTION.txt`, `INTENTS_CONFIG.md`, `FullConfig_AnonymousApex.apex` stub, `DEPLOY.md`.
 - **ZIP export** — Repo-style layout under `use-cases/<DeveloperName>/` and `force-app/main/default/classes/`.
-- **OpenAI** — If `OPENAI_API_KEY` is set, generates implementation via `gpt-4o-mini` (override with `OPENAI_MODEL`). Otherwise uses a **template** handler with a `health_Check_Agent` skill you can extend.
+- **OpenAI** — If `OPENAI_API_KEY` is set, generates implementation via `gpt-4.1` by default (override with `OPENAI_MODEL`). Otherwise uses a **template** handler with a `health_Check_Agent` skill you can extend.
 
 ## Salesforce Connected App
 
