@@ -233,9 +233,6 @@ function preflightValidateHandlerApex(apex: string, availableObjects?: Set<strin
   if (/case\s+'[^']+'\s*:/.test(apex) || /\bcase\s+[A-Za-z0-9_]+\s*:/.test(apex)) {
     issues.push("Java-style switch case syntax detected; use switch on ... when ...");
   }
-  if (/\bSELECT[\s\S]{0,600}?\b[A-Za-z0-9_]+__c\b/i.test(apex)) {
-    issues.push("Hardcoded custom __c field in handler SOQL; use standard fields or metadata-safe resolution");
-  }
   if (availableObjects && availableObjects.size > 0) {
     const missing = extractReferencedObjectsFromApex(apex).filter(
       (obj) => !availableObjects.has(obj)
@@ -263,6 +260,8 @@ function extractReferencedObjectsFromApex(apex: string): string[] {
     "time",
     "id",
     "object",
+    "sobject",
+    "sobjecttype",
     "map",
     "list",
     "set",
