@@ -26,6 +26,11 @@ export const generateRequestSchema = z.object({
     .optional(),
   /** Skip OpenAI and use built-in template */
   useTemplateOnly: z.boolean().optional(),
+  /**
+   * When true (default), deploy merges generated handler with existing Apex in org (additive skills).
+   * Set false to replace entire handler class with generated code only.
+   */
+  mergeExistingHandler: z.boolean().optional(),
 });
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>;

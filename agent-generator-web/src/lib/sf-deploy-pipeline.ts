@@ -11,6 +11,7 @@ import { refreshSalesforceAccessToken } from "./sf-token-refresh";
 import type { SfSessionData } from "./session";
 import { readFile } from "fs/promises";
 import path from "path";
+import { mergeHandlerApexWithOrg } from "./apex-handler-merge";
 import { getOpenAIApiKey, getOpenAIModel } from "./openai-server-config";
 
 const API_VER = "v59.0";
@@ -21,6 +22,11 @@ export type OrgDeployResult = {
   ok: boolean;
   steps: DeployStep[];
   errors: string[];
+};
+
+/** When true (default), fetch existing handler Apex from org and merge new skills without removing old when branches. */
+export type DeployBundleOptions = {
+  mergeExistingHandler?: boolean;
 };
 
 function pickField(fields: DescribeField[], suffix: string): string | null {
@@ -546,7 +552,8 @@ async function resolveApiName(
 export async function deployBundleToConnectedOrg(
   session: SfSessionData,
   bundle: GeneratedBundle,
-  onSessionPersist: () => Promise<void>
+  onSessionPersist: () => Promise<void>,
+  options?: DeployBundleOptions
 ): Promise<OrgDeployResult> {
   const steps: DeployStep[] = [];
   const errors: string[] = [];
@@ -768,8 +775,36 @@ export async function deployBundleToConnectedOrg(
       addStep("Resolve skill name collisions", true, "no conflicts found");
     }
 
-    const preflightIssues = preflightValidateHandlerApex(bundle.handlerApex, availableObjects);
     let handlerApexToDeploy = bundle.handlerApex;
+    if (options?.mergeExistingHandler !== false) {
+      const tq = `SELECT Body FROM ApexClass WHERE Name = '${soqlEscape(bundle.parameters.handlerClass)}' LIMIT 1`;
+      const tr = await fetchWithRefresh(`tooling/query?q=${encodeURIComponent(tq)}`);
+      let orgBody: string | null = null;
+      if (tr.ok && tr.json && typeof tr.json === "object") {
+        const recs = (tr.json as { records?: { Body?: string }[] }).records;
+        const b = recs?.[0]?.Body;
+        orgBody = typeof b === "string" && b.trim() ? b : null;
+      }
+      if (orgBody?.trim()) {
+        try {
+          const merged = mergeHandlerApexWithOrg(orgBody, handlerApexToDeploy);
+          handlerApexToDeploy = merged;
+          addStep(
+            "Merge handler with org",
+            true,
+            "Existing when branches preserved where names match; new skills added from bundle (additive)"
+          );
+        } catch (e) {
+          addStep(
+            "Merge handler with org",
+            false,
+            (e as Error).message?.slice(0, 200) ?? "merge failed"
+          );
+        }
+      }
+    }
+
+    const preflightIssues = preflightValidateHandlerApex(handlerApexToDeploy, availableObjects);
     if (preflightIssues.length > 0) {
       const onlyUnavailableObjectIssue = preflightIssues.every((x) =>
         x.startsWith("Handler references unavailable objects:")

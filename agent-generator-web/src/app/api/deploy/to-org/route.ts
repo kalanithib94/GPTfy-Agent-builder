@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { generatedBundleSchema } from "@/lib/generation-types";
 import { runGptfyOrgValidation } from "@/lib/gptfy-metadata";
 import { deployBundleToConnectedOrg } from "@/lib/sf-deploy-pipeline";
 import { getSfSession } from "@/lib/session";
+
+const deployBodySchema = z.object({
+  bundle: generatedBundleSchema,
+  mergeExistingHandler: z.boolean().optional(),
+});
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,14 +27,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  const bundleUnknown = (body as { bundle?: unknown }).bundle;
-  const parsed = generatedBundleSchema.safeParse(bundleUnknown);
+  const parsed = deployBodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "invalid_bundle", details: parsed.error.flatten() },
+      { error: "invalid_body", details: parsed.error.flatten() },
       { status: 400 }
     );
   }
+  const { bundle: bundleData, mergeExistingHandler } = parsed.data;
 
   try {
     const val = await runGptfyOrgValidation(
@@ -44,10 +50,11 @@ export async function POST(request: Request) {
 
   const result = await deployBundleToConnectedOrg(
     session,
-    parsed.data,
+    bundleData,
     async () => {
       await session.save();
-    }
+    },
+    { mergeExistingHandler: mergeExistingHandler !== false }
   );
 
   return NextResponse.json(result);

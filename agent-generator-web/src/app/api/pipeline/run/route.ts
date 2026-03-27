@@ -101,7 +101,8 @@ export async function POST(request: Request) {
     bundle,
     async () => {
       await session.save();
-    }
+    },
+    { mergeExistingHandler: p.mergeExistingHandler !== false }
   );
 
   return NextResponse.json({

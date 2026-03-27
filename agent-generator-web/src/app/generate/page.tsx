@@ -48,6 +48,8 @@ export default function GeneratePage() {
   const [notes, setNotes] = useState("");
   const [openaiModel, setOpenaiModel] = useState("");
   const [useTemplateOnly, setUseTemplateOnly] = useState(false);
+  /** When true, deploy merges generated handler with existing Apex in org (additive skills). */
+  const [mergeExistingHandler, setMergeExistingHandler] = useState(true);
 
   const [bundle, setBundle] = useState<GeneratedBundle | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -95,6 +97,7 @@ export default function GeneratePage() {
       notes: notes || undefined,
       openaiModel: openaiModel.trim() || undefined,
       useTemplateOnly: useTemplateOnly || undefined,
+      mergeExistingHandler,
     };
   }
 
@@ -150,7 +153,10 @@ export default function GeneratePage() {
       const res = await fetch("/api/deploy/to-org", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bundle }),
+        body: JSON.stringify({
+          bundle,
+          mergeExistingHandler: mergeExistingHandler !== false,
+        }),
       });
       const j = await res.json();
       if (!res.ok) {
@@ -307,12 +313,12 @@ export default function GeneratePage() {
               that agent instead of creating a different one.
             </p>
             <p>
-              <strong className="text-white">Add a skill:</strong> After you generate (or paste) a bundle, merge{" "}
-              <strong className="text-white">all</strong> skills you want to keep into one handler: each skill needs a{" "}
-              <code className="text-cyan-200/90">when &apos;skill_name&apos;</code> branch{" "}
-              <em className="text-neutral-400">and</em> a matching{" "}
-              <code className="text-cyan-200/90">*_PromptCommand.json</code>. Publish replaces the whole Apex class and
-              upserts prompts by external id, so old skills disappear from the handler if you omit them.
+              <strong className="text-white">Add a skill:</strong> Leave{" "}
+              <strong className="text-white">Merge with org handler</strong> checked (default). Deploy loads your existing
+              handler from the org, keeps every existing <code className="text-cyan-200/90">when</code> branch, and adds
+              only new skills from this bundle. Also add each new skill&apos;s{" "}
+              <code className="text-cyan-200/90">*_PromptCommand.json</code> here; prompts upsert by external id and do
+              not delete older prompts. Uncheck merge only if you want to replace the entire handler with generated code.
             </p>
             <p>
               <strong className="text-white">Add intents:</strong> In the <strong className="text-white">Intents</strong>{" "}
@@ -477,6 +483,16 @@ export default function GeneratePage() {
             className="rounded border-[var(--border)]"
           />
           Force template only (skip OpenAI even if configured)
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={mergeExistingHandler}
+            onChange={(e) => setMergeExistingHandler(e.target.checked)}
+            className="rounded border-[var(--border)]"
+          />
+          Merge with org handler (additive: keep existing skills, add new ones from this bundle)
         </label>
 
         {warnings.length > 0 ? (
