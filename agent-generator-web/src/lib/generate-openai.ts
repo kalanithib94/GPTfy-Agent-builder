@@ -164,6 +164,50 @@ function buildDefaultSampleQueries(agentName: string, skillNames: string[]): str
   return queries.slice(0, 10);
 }
 
+function humanizeName(v: string): string {
+  return v
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildCoverageSampleQueries(
+  agentName: string,
+  skillNames: string[],
+  intents: IntentPlanItem[] | undefined
+): string[] {
+  const cleanSkills = Array.from(new Set(skillNames.filter(Boolean)));
+  const cleanIntents = Array.from(
+    new Set((intents ?? []).map((i) => (i.name ?? "").trim()).filter(Boolean))
+  );
+  const queries: string[] = [];
+
+  // One query per skill.
+  for (const skill of cleanSkills) {
+    queries.push(`Use skill ${skill} to help with ${humanizeName(skill)} for me.`);
+  }
+
+  // One query per intent.
+  for (const intent of cleanIntents) {
+    queries.push(`Trigger intent ${intent} and execute its configured actions for this request.`);
+  }
+
+  // Five mixed queries (intent + skill in one ask).
+  const mixCount = Math.max(5, cleanSkills.length && cleanIntents.length ? 5 : 0);
+  for (let i = 0; i < mixCount; i++) {
+    const s = cleanSkills[i % Math.max(cleanSkills.length, 1)] ?? "health_Check_Agent";
+    const it = cleanIntents[i % Math.max(cleanIntents.length, 1)] ?? "out_of_scope";
+    queries.push(
+      `Use skill ${s} first, then apply intent ${it} follow-up action if risk or missing info is detected.`
+    );
+  }
+
+  // Keep order, remove duplicates, ensure non-empty.
+  const deduped = Array.from(new Set(queries.map((q) => q.trim()).filter(Boolean)));
+  if (!deduped.length) return buildDefaultSampleQueries(agentName, cleanSkills);
+  return deduped;
+}
+
 function validateSystemPromptQuality(systemPrompt: string): string | null {
   const p = systemPrompt.trim();
   if (p.length < 500) return "agentSystemPrompt too short; expected detailed operating policy";
@@ -835,9 +879,7 @@ and explicitly state "Never claim success without tool JSON showing success=true
         d.fullConfigStubApex ??
         `String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}';\n// TODO: intent rows`,
       intentDeployPlan,
-      sampleQueries: d.sampleQueries?.length
-        ? d.sampleQueries
-        : buildDefaultSampleQueries(params.agentName, skillNames),
+      sampleQueries: buildCoverageSampleQueries(params.agentName, skillNames, intentDeployPlan),
     };
 
     return { ok: true, bundle };
