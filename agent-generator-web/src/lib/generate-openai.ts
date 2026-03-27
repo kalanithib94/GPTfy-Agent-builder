@@ -40,6 +40,8 @@ type GenerateWithOpenAIOptions = {
   previousHandlerApex?: string;
   deployErrorText?: string;
   retryNotes?: string;
+  /** User-authored research: skills/intents to add or update, business rules — injected into prompts. */
+  intentResearchInstructions?: string;
 };
 
 type IntentPlanItem = NonNullable<z.infer<typeof llmShape>["intentDeployPlan"]>[number];
@@ -137,15 +139,18 @@ function buildHighQualitySystemPrompt(
   agentName: string,
   useCase: string,
   notes: string | undefined,
-  skillNames: string[]
+  skillNames: string[],
+  intentResearchInstructions?: string | undefined
 ): string {
   const skills = skillNames.length ? skillNames.join(", ") : "health_Check_Agent";
+  const research = intentResearchInstructions?.trim();
   return `You are ${agentName}, a Salesforce-first assistant.
 
 CORE RESPONSIBILITIES:
 - Execute this use case accurately and safely:
 ${useCase}
 ${notes?.trim() ? `\nBUSINESS NOTES:\n${notes.trim()}\n` : ""}
+${research ? `\nINTENT AND SKILL RESEARCH (follow closely):\n${research}\n` : ""}
 - Keep responses concise, factual, and action-oriented.
 
 TOOL USAGE RULES (MANDATORY):
@@ -653,7 +658,13 @@ export async function generateWithOpenAI(
     Boolean(options?.previousHandlerApex?.trim()) &&
     Boolean(options?.deployErrorText?.trim());
 
+  const research = options?.intentResearchInstructions?.trim();
+  const researchBlock = research
+    ? `\n\nAUTHORITATIVE USER RESEARCH — SKILLS, INTENTS, AND DEPLOY (you MUST reflect this in intentDeployPlan, handlerApex switch branches, and promptCommands; do not ignore):\n${research}\n`
+    : "";
+
   const system = `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
+${researchBlock}
 Return ONLY valid JSON (no markdown) with keys:
 handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan (optional array).
 
@@ -756,6 +767,7 @@ and explicitly state "Never claim success without tool JSON showing success=true
     useCase: compactUseCase,
     originalUseCase: useCase,
     notes: notes ?? null,
+    intentResearchInstructions: research ?? null,
     org: orgContext,
     handlerClass: params.handlerClass,
     agentDeveloperName: params.agentDeveloperName,
@@ -884,7 +896,13 @@ and explicitly state "Never claim success without tool JSON showing success=true
     const systemPromptErr = validateSystemPromptQuality(d.agentSystemPrompt);
     const finalSystemPrompt =
       systemPromptErr ?
-        buildHighQualitySystemPrompt(params.agentName, useCase, notes, skillNames)
+        buildHighQualitySystemPrompt(
+          params.agentName,
+          useCase,
+          notes,
+          skillNames,
+          options?.intentResearchInstructions
+        )
       : d.agentSystemPrompt;
 
     const bundle: GeneratedBundle = {

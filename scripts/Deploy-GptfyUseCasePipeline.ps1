@@ -52,7 +52,7 @@ param(
 
     [string] $AgentModelConnectionName = 'Response API Agentic',
 
-    [string] $DataMappingName = 'Prepackaged - Case',
+    [string] $DataMappingName = 'Account 360 view - GPTfy',
 
     [string] $AgentName = 'IT Helpdesk Agent (Pipeline)',
 

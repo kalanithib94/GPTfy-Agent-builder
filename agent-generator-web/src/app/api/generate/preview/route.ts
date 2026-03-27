@@ -61,6 +61,7 @@ ${p.useCase}
 | AI_Data_Extraction_Mapping__c (name) | ${mapping} |
 
 ${p.notes ? `## Additional notes\n${p.notes}\n` : ""}
+${p.intentResearchInstructions?.trim() ? `## Skills & intents research (sent to OpenAI)\n${p.intentResearchInstructions.trim()}\n` : ""}
 
 ## Org context (from session)
 - Instance: ${session.instanceUrl ?? "(unknown)"}

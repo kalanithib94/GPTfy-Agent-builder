@@ -85,45 +85,89 @@ function buildSwitchInner(parts: WhenPart[]): string {
   return `\n${lines.join("\n")}\n            `;
 }
 
+export type SkillMergeMode = {
+  /** If true, incoming `when 'name'` replaces org for the same skill name. */
+  overwriteMatchingSkills: boolean;
+  /** If true, only skills present in the incoming bundle remain (org-only skills removed). */
+  removeSkillsNotInBundle: boolean;
+};
+
 /**
- * Merge org + incoming switch bodies: existing skill branches win on name collision;
- * branches only in incoming are added; when else prefers org if present.
+ * Merge org + incoming switch bodies.
+ * - Default additive: org wins on name collision; add only new names from incoming.
+ * - overwriteMatchingSkills: incoming replaces org for same skill name.
+ * - removeSkillsNotInBundle: incoming bundle is authoritative; org-only skills dropped.
  */
-export function mergeSwitchInnerPreservingExisting(orgInner: string, incomingInner: string): string {
+export function mergeSwitchInnerWithPolicy(
+  orgInner: string,
+  incomingInner: string,
+  mode: SkillMergeMode
+): string {
   const orgParts = parseWhenParts(orgInner);
   const incParts = parseWhenParts(incomingInner);
 
   let orgElse: string | null = null;
+  let incElse: string | null = null;
   for (const p of orgParts) {
     if (p.kind === "else") orgElse = p.raw;
+  }
+  for (const p of incParts) {
+    if (p.kind === "else") incElse = p.raw;
+  }
+
+  const incSkillNames = new Set(
+    incParts.filter((p): p is WhenPart & { kind: "skill" } => p.kind === "skill").map((p) => p.name)
+  );
+  const incSkillMap = new Map(
+    incParts.filter((p): p is WhenPart & { kind: "skill" } => p.kind === "skill").map((p) => [p.name, p] as const)
+  );
+
+  if (mode.removeSkillsNotInBundle) {
+    const merged: WhenPart[] = [];
+    for (const name of Array.from(incSkillNames)) {
+      const p = incSkillMap.get(name);
+      if (p) merged.push(p);
+    }
+    const elsePart = incElse ?? orgElse;
+    if (elsePart) merged.push({ kind: "else", raw: elsePart });
+    return buildSwitchInner(merged);
   }
 
   const merged: WhenPart[] = [];
   const seen = new Set<string>();
 
   for (const p of orgParts) {
-    if (p.kind === "skill") {
+    if (p.kind !== "skill") continue;
+    const incoming = incSkillMap.get(p.name);
+    if (incoming && mode.overwriteMatchingSkills) {
+      merged.push(incoming);
+    } else {
+      merged.push(p);
+    }
+    seen.add(p.name);
+  }
+
+  for (const p of incParts) {
+    if (p.kind === "skill" && !seen.has(p.name)) {
       merged.push(p);
       seen.add(p.name);
     }
   }
 
-  for (const p of incParts) {
-    if (p.kind === "skill") {
-      if (!seen.has(p.name)) {
-        merged.push(p);
-        seen.add(p.name);
-      }
-    }
-  }
-
-  const elsePart =
-    orgElse ?? incParts.find((x): x is WhenPart & { kind: "else" } => x.kind === "else")?.raw;
+  const elsePart = mode.overwriteMatchingSkills ? incElse ?? orgElse : orgElse ?? incElse;
   if (elsePart) {
     merged.push({ kind: "else", raw: elsePart });
   }
 
   return buildSwitchInner(merged);
+}
+
+/** @deprecated use mergeSwitchInnerWithPolicy with defaults */
+export function mergeSwitchInnerPreservingExisting(orgInner: string, incomingInner: string): string {
+  return mergeSwitchInnerWithPolicy(orgInner, incomingInner, {
+    overwriteMatchingSkills: false,
+    removeSkillsNotInBundle: false,
+  });
 }
 
 const PRIVATE_METHOD_RE =
@@ -161,13 +205,23 @@ function methodNamesInWhenBlocks(switchInner: string): Set<string> {
  * Appends private String helper methods from incoming that are referenced by newly added
  * when branches and not already present in org.
  */
-export function mergeHandlerApexWithOrg(orgBody: string, incomingBody: string): string {
+export type HandlerMergeOptions = SkillMergeMode;
+
+export function mergeHandlerApexWithOrg(
+  orgBody: string,
+  incomingBody: string,
+  mergeOpts?: HandlerMergeOptions
+): string {
   const orgSwitch = extractSwitchOnRequestParam(orgBody);
   const incSwitch = extractSwitchOnRequestParam(incomingBody);
   if (!incSwitch) return incomingBody;
   if (!orgSwitch) return incomingBody;
 
-  const mergedInner = mergeSwitchInnerPreservingExisting(orgSwitch.inner, incSwitch.inner);
+  const mode: SkillMergeMode = mergeOpts ?? {
+    overwriteMatchingSkills: false,
+    removeSkillsNotInBundle: false,
+  };
+  const mergedInner = mergeSwitchInnerWithPolicy(orgSwitch.inner, incSwitch.inner, mode);
   const newSwitchText = `switch on requestParam {${mergedInner}}`;
 
   let result =

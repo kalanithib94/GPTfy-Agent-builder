@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { buildTemplateBundle } from "@/lib/generate-template-bundle";
-import { generateWithOpenAI } from "@/lib/generate-openai";
+import { buildBundleForPipeline } from "@/lib/pipeline-build-bundle";
 import {
   generateRequestSchema,
-  resolveGenerateParams,
 } from "@/lib/generation-types";
 import { defaultIntentDeployPlan } from "@/lib/intent-deploy-types";
 import { runGptfyOrgValidation } from "@/lib/gptfy-metadata";
-import { deployBundleToConnectedOrg } from "@/lib/sf-deploy-pipeline";
-import { getOpenAIApiKey } from "@/lib/openai-server-config";
+import {
+  deployBundleToConnectedOrg,
+  type DeployBundleOptions,
+} from "@/lib/sf-deploy-pipeline";
+import { ndjsonDeployResponse } from "@/lib/deploy-ndjson";
 import { getSfSession } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -18,6 +19,8 @@ export const maxDuration = 120;
 /**
  * One-shot: generate bundle from use case + deploy to the connected org
  * (Apex, prompts, agent, skills, activate, intents).
+ *
+ * When `streamDeploy: true`, responds with `application/x-ndjson`: status lines, step lines, then complete.
  */
 export async function POST(request: Request) {
   const session = await getSfSession();
@@ -41,41 +44,74 @@ export async function POST(request: Request) {
   }
 
   const p = parsed.data;
-  const params = resolveGenerateParams(p);
-  const openaiKey = await getOpenAIApiKey();
-  const useTemplate = p.useTemplateOnly === true || !openaiKey;
 
-  const warnings: string[] = [];
-  let bundle;
+  const deployOpts: DeployBundleOptions = {
+    mergeExistingHandler: p.mergeExistingHandler !== false,
+    overwriteMatchingSkills: p.overwriteMatchingSkills === true,
+    removeSkillsNotInBundle: p.removeSkillsNotInBundle === true,
+    intentDeployMode: p.intentDeployMode,
+    intentSyncDeleteOrgWhenBundleEmpty: p.intentSyncDeleteOrgWhenBundleEmpty === true,
+  };
 
-  if (!useTemplate) {
-    const ai = await generateWithOpenAI(
-      openaiKey!,
-      params,
-      p.useCase,
-      p.notes,
-      {
-        instanceUrl: session.instanceUrl,
-        gptfyNamespace: session.gptfyNamespace,
-      },
-      { modelOverride: p.openaiModel }
-    );
-    if (ai.ok) {
-      bundle = ai.bundle;
-    } else {
-      warnings.push(`OpenAI failed (${ai.error}). Used template bundle.`);
-      bundle = buildTemplateBundle(params, p.useCase, p.notes, {
-        gptfyNamespace: session.gptfyNamespace,
+  const orgContext = {
+    instanceUrl: session.instanceUrl,
+    gptfyNamespace: session.gptfyNamespace,
+  };
+
+  async function runOrgValidation() {
+    try {
+      const val = await runGptfyOrgValidation(
+        session.instanceUrl!,
+        session.accessToken!,
+        "v59.0"
+      );
+      session.gptfyNamespace = val.primaryPrefix ?? undefined;
+      await session.save();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (p.streamDeploy === true) {
+    return ndjsonDeployResponse(async (write) => {
+      write({ type: "status", message: "Generating bundle…" });
+      const { bundle, warnings, openaiConfigured } = await buildBundleForPipeline(p, orgContext);
+
+      if (!bundle.intentDeployPlan?.length) {
+        bundle.intentDeployPlan = defaultIntentDeployPlan(
+          bundle.parameters.agentDeveloperName,
+          bundle.parameters.agentName
+        );
+      }
+
+      write({ type: "status", message: "Checking GPTfy org metadata…" });
+      await runOrgValidation();
+
+      write({ type: "status", message: "Deploying to Salesforce…" });
+      const deploy = await deployBundleToConnectedOrg(
+        session,
+        bundle,
+        async () => {
+          await session.save();
+        },
+        {
+          ...deployOpts,
+          onDeployStep: (step) => write({ type: "step", step }),
+          onDeployError: (message) => write({ type: "error", message }),
+        }
+      );
+
+      write({
+        type: "complete",
+        bundle,
+        warnings,
+        deploy,
+        openaiConfigured,
       });
-    }
-  } else {
-    if (!p.useTemplateOnly && !openaiKey) {
-      warnings.push("No OpenAI API key on server — template bundle.");
-    }
-    bundle = buildTemplateBundle(params, p.useCase, p.notes, {
-      gptfyNamespace: session.gptfyNamespace,
     });
   }
+
+  const { bundle, warnings, openaiConfigured } = await buildBundleForPipeline(p, orgContext);
 
   if (!bundle.intentDeployPlan?.length) {
     bundle.intentDeployPlan = defaultIntentDeployPlan(
@@ -84,17 +120,7 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    const val = await runGptfyOrgValidation(
-      session.instanceUrl,
-      session.accessToken,
-      "v59.0"
-    );
-    session.gptfyNamespace = val.primaryPrefix ?? undefined;
-    await session.save();
-  } catch {
-    /* ignore */
-  }
+  await runOrgValidation();
 
   const deploy = await deployBundleToConnectedOrg(
     session,
@@ -102,13 +128,13 @@ export async function POST(request: Request) {
     async () => {
       await session.save();
     },
-    { mergeExistingHandler: p.mergeExistingHandler !== false }
+    deployOpts
   );
 
   return NextResponse.json({
     bundle,
     warnings,
     deploy,
-    openaiConfigured: Boolean(openaiKey),
+    openaiConfigured,
   });
 }

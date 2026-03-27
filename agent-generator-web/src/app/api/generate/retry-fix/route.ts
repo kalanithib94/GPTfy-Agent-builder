@@ -9,6 +9,7 @@ const retryFixSchema = z.object({
   bundle: generatedBundleSchema,
   useCase: z.string().min(10),
   notes: z.string().optional(),
+  intentResearchInstructions: z.string().optional(),
   deployErrorText: z.string().min(3),
   retryNotes: z.string().optional(),
   openaiModel: z.string().regex(/^[A-Za-z0-9._:-]{2,80}$/).optional(),
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
       previousHandlerApex: p.bundle.handlerApex,
       deployErrorText: p.deployErrorText,
       retryNotes: p.retryNotes,
+      intentResearchInstructions: p.intentResearchInstructions,
     }
   );
 

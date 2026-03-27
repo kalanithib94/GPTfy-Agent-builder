@@ -22,11 +22,33 @@ export type OrgDeployResult = {
   ok: boolean;
   steps: DeployStep[];
   errors: string[];
+  /** Present after AI_Agent__c upsert — for Lightning deep links in the UI */
+  deployedAgentId?: string;
+  agentObjectApiName?: string;
 };
 
-/** When true (default), fetch existing handler Apex from org and merge new skills without removing old when branches. */
+/**
+ * Deploy behavior for incremental / full CRUD.
+ * - mergeExistingHandler: combine generated handler with org (default true).
+ * - overwriteMatchingSkills: incoming `when` replaces org for same skill name.
+ * - removeSkillsNotInBundle: drop org skills not in bundle; delete orphan AI_Prompt__c rows.
+ * - intentDeployMode: create_only (skip existing), upsert (update + replace actions), sync (delete intents not in bundle).
+ * - intentSyncDeleteOrgWhenBundleEmpty: when sync + empty intentDeployPlan, delete all org intents for this agent (default false = skip).
+ */
 export type DeployBundleOptions = {
   mergeExistingHandler?: boolean;
+  overwriteMatchingSkills?: boolean;
+  removeSkillsNotInBundle?: boolean;
+  intentDeployMode?: "create_only" | "upsert" | "sync";
+  /**
+   * When `intentDeployMode` is `sync` and `intentDeployPlan` is empty: if true, delete every intent
+   * for this agent in the org (full wipe). If false (default), skip deletion and record a deploy step.
+   */
+  intentSyncDeleteOrgWhenBundleEmpty?: boolean;
+  /** Called after each deploy step (for streaming UI). */
+  onDeployStep?: (step: DeployStep) => void;
+  /** Called when a non-fatal error line is recorded (same as final `errors` array). */
+  onDeployError?: (message: string) => void;
 };
 
 function pickField(fields: DescribeField[], suffix: string): string | null {
@@ -559,9 +581,12 @@ export async function deployBundleToConnectedOrg(
   const errors: string[] = [];
   const pushErr = (msg: string) => {
     errors.push(msg);
+    options?.onDeployError?.(msg);
   };
   const addStep = (step: string, ok: boolean, detail?: string) => {
-    steps.push({ step, ok, detail });
+    const row: DeployStep = { step, ok, detail };
+    steps.push(row);
+    options?.onDeployStep?.(row);
   };
 
   let token = session.accessToken!;
@@ -589,6 +614,8 @@ export async function deployBundleToConnectedOrg(
     }
     return r;
   }
+
+  let deployAgentMeta: { deployedAgentId: string; agentObjectApiName: string } | undefined;
 
   try {
     const plans: IntentDeployPlan[] =
@@ -787,12 +814,20 @@ export async function deployBundleToConnectedOrg(
       }
       if (orgBody?.trim()) {
         try {
-          const merged = mergeHandlerApexWithOrg(orgBody, handlerApexToDeploy);
+          const merged = mergeHandlerApexWithOrg(orgBody, handlerApexToDeploy, {
+            overwriteMatchingSkills: options?.overwriteMatchingSkills === true,
+            removeSkillsNotInBundle: options?.removeSkillsNotInBundle === true,
+          });
           handlerApexToDeploy = merged;
           addStep(
             "Merge handler with org",
             true,
-            "Existing when branches preserved where names match; new skills added from bundle (additive)"
+            [
+              options?.overwriteMatchingSkills ? "overwrite matching skills" : null,
+              options?.removeSkillsNotInBundle ? "sync skill list to bundle" : null,
+            ]
+              .filter(Boolean)
+              .join("; ") || "additive merge (org wins on name clash)"
           );
         } catch (e) {
           addStep(
@@ -801,6 +836,12 @@ export async function deployBundleToConnectedOrg(
             (e as Error).message?.slice(0, 200) ?? "merge failed"
           );
         }
+      } else {
+        addStep(
+          "Merge handler with org",
+          true,
+          "No existing Apex class body in org (or class missing) — deploying generated handler only"
+        );
       }
     }
 
@@ -937,6 +978,38 @@ export async function deployBundleToConnectedOrg(
       promptNotes.length ? `normalized ${promptNotes.length} prompt command(s)` : undefined
     );
 
+    const bundleStemSet = new Set(
+      bundle.promptCommands.map((pc) => promptStemFromFileName(pc.fileName)).filter(Boolean)
+    );
+    if (options?.removeSkillsNotInBundle === true && fClass) {
+      const orphanPrompts = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id, ${fExt!} FROM ${promptApi} WHERE ${fClass!} = '${soqlEscape(handlerName)}'`
+      );
+      let deletedPrompts = 0;
+      for (const row of orphanPrompts) {
+        const extVal = String(row[fExt!] ?? "");
+        if (!extVal.startsWith(extPrefix)) continue;
+        const stem = extVal.slice(extPrefix.length);
+        if (bundleStemSet.has(stem)) continue;
+        const pid = String(row.Id);
+        const skillRows = await runQuery(
+          instanceUrl,
+          token,
+          `SELECT Id FROM ${skillApi} WHERE ${skillPromptFld} = '${soqlEscape(pid)}'`
+        );
+        for (const sj of skillRows) {
+          await fetchWithRefresh(`sobjects/${skillApi}/${String(sj.Id)}`, { method: "DELETE" });
+        }
+        const delP = await fetchWithRefresh(`sobjects/${promptApi}/${pid}`, { method: "DELETE" });
+        if (delP.ok) deletedPrompts++;
+      }
+      if (deletedPrompts > 0) {
+        addStep("Remove prompts not in bundle", true, String(deletedPrompts));
+      }
+    }
+
     const extKeys = bundle.promptCommands
       .map((pc) => `${extPrefix}${promptStemFromFileName(pc.fileName)}`)
       .filter(Boolean);
@@ -995,6 +1068,8 @@ export async function deployBundleToConnectedOrg(
       agentId = id;
     }
     addStep("Upsert AI_Agent__c", true, agentId);
+
+    deployAgentMeta = { deployedAgentId: agentId, agentObjectApiName: agentApi };
 
     const inPrompts = promptIds.map((id) => `'${soqlEscape(id)}'`).join(",");
     const skillDel = await runQuery(
@@ -1280,7 +1355,7 @@ export async function deployBundleToConnectedOrg(
         false,
         `${provisionErrors.length} dependency issue(s)`
       );
-      return { ok: false, steps, errors };
+      return { ok: false, steps, errors, ...deployAgentMeta };
     }
     addStep(
       "Provision Apex/Flow dependencies",
@@ -1288,43 +1363,107 @@ export async function deployBundleToConnectedOrg(
       `apex=${referencedApex.size}, flow=${referencedFlows.size}${provisionNotes.length ? `, notes=${provisionNotes.length}` : ""}`
     );
 
-    const existingNames = new Set(
-      (
-        await runQuery(
-          instanceUrl,
-          token,
-          `SELECT Name FROM ${intentApi} WHERE ${fIntAgent!} = '${agentId}'`
-        )
-      ).map((r) => String(r.Name))
-    );
+    const intentMode = options?.intentDeployMode ?? "upsert";
+    const shouldUpsertExisting = intentMode === "upsert" || intentMode === "sync";
+
+    const deleteDetailsForAction = async (actionId: string) => {
+      if (!fDetAct) return;
+      const drows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ${detailApi} WHERE ${fDetAct} = '${soqlEscape(actionId)}'`
+      );
+      for (const d of drows) {
+        await fetchWithRefresh(`sobjects/${detailApi}/${String(d.Id)}`, { method: "DELETE" });
+      }
+    };
+
+    const deleteActionsForIntent = async (intentId: string) => {
+      const acts = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ${actionApi} WHERE ${fActIntent!} = '${soqlEscape(intentId)}'`
+      );
+      for (const a of acts) {
+        const aid = String(a.Id);
+        await deleteDetailsForAction(aid);
+        await fetchWithRefresh(`sobjects/${actionApi}/${aid}`, { method: "DELETE" });
+      }
+    };
+
+    const deleteIntentCascade = async (intentId: string) => {
+      await deleteActionsForIntent(intentId);
+      const dr = await fetchWithRefresh(`sobjects/${intentApi}/${intentId}`, { method: "DELETE" });
+      if (!dr.ok) {
+        pushErr(`Intent delete: ${dr.text.slice(0, 200)}`);
+      }
+    };
+
+    const planNamesInBundle = new Set(plans.map((p) => p.name));
 
     let intentsCreated = 0;
+    let intentsUpdated = 0;
+    let intentsRemoved = 0;
     const skippedActionNotes: string[] = [];
     for (const plan of plans) {
-      if (existingNames.has(plan.name)) {
+      const existingIntentRows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId)}' AND Name = '${soqlEscape(plan.name)}' LIMIT 1`
+      );
+      const existingIntentId = existingIntentRows[0]?.Id ? String(existingIntentRows[0].Id) : null;
+
+      if (existingIntentId && intentMode === "create_only") {
         addStep(`Intent skip (exists): ${plan.name}`, true);
         continue;
       }
 
-      const intentBody: Record<string, unknown> = {
-        Name: truncateName(plan.name, 80),
-        [fIntAgent!]: agentId,
-      };
-      if (fIntSeq != null && plan.sequence != null) intentBody[fIntSeq] = plan.sequence;
-      if (fIntActive != null && plan.isActive != null) intentBody[fIntActive] = plan.isActive;
-      if (fIntDesc != null && plan.description) intentBody[fIntDesc] = plan.description;
+      let intentId: string | null = null;
 
-      const ir = await fetchWithRefresh(`sobjects/${intentApi}`, {
-        method: "POST",
-        body: JSON.stringify(intentBody),
-      });
-      if (!ir.ok) {
-        pushErr(`Intent ${plan.name}: ${ir.text.slice(0, 300)}`);
+      if (existingIntentId && shouldUpsertExisting) {
+        intentId = existingIntentId;
+        const patchBody: Record<string, unknown> = {};
+        if (fIntSeq != null && plan.sequence != null) patchBody[fIntSeq] = plan.sequence;
+        if (fIntActive != null && plan.isActive != null) patchBody[fIntActive] = plan.isActive;
+        if (fIntDesc != null && plan.description) patchBody[fIntDesc] = plan.description;
+        if (Object.keys(patchBody).length > 0) {
+          const pr = await fetchWithRefresh(`sobjects/${intentApi}/${intentId}`, {
+            method: "PATCH",
+            body: JSON.stringify(patchBody),
+          });
+          if (!pr.ok) {
+            pushErr(`Intent patch ${plan.name}: ${pr.text.slice(0, 300)}`);
+            continue;
+          }
+        }
+        await deleteActionsForIntent(intentId);
+        intentsUpdated++;
+      } else if (!existingIntentId) {
+        const intentBody: Record<string, unknown> = {
+          Name: truncateName(plan.name, 80),
+          [fIntAgent!]: agentId,
+        };
+        if (fIntSeq != null && plan.sequence != null) intentBody[fIntSeq] = plan.sequence;
+        if (fIntActive != null && plan.isActive != null) intentBody[fIntActive] = plan.isActive;
+        if (fIntDesc != null && plan.description) intentBody[fIntDesc] = plan.description;
+
+        const ir = await fetchWithRefresh(`sobjects/${intentApi}`, {
+          method: "POST",
+          body: JSON.stringify(intentBody),
+        });
+        if (!ir.ok) {
+          pushErr(`Intent ${plan.name}: ${ir.text.slice(0, 300)}`);
+          continue;
+        }
+        const newId = (ir.json as { id?: string })?.id;
+        if (!newId) continue;
+        intentId = newId;
+        intentsCreated++;
+      } else {
         continue;
       }
-      const intentId = (ir.json as { id?: string })?.id;
+
       if (!intentId) continue;
-      intentsCreated++;
 
       for (const act of plan.actions) {
         const actBody: Record<string, unknown> = {
@@ -1493,9 +1632,47 @@ export async function deployBundleToConnectedOrg(
         }
       }
     }
+
+    if (intentMode === "sync") {
+      if (plans.length > 0) {
+        const allIntents = await runQuery(
+          instanceUrl,
+          token,
+          `SELECT Id, Name FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId)}'`
+        );
+        for (const row of allIntents) {
+          const name = String(row.Name);
+          if (planNamesInBundle.has(name)) continue;
+          await deleteIntentCascade(String(row.Id));
+          intentsRemoved++;
+        }
+      } else if (options?.intentSyncDeleteOrgWhenBundleEmpty === true) {
+        const allIntents = await runQuery(
+          instanceUrl,
+          token,
+          `SELECT Id, Name FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId)}'`
+        );
+        for (const row of allIntents) {
+          await deleteIntentCascade(String(row.Id));
+          intentsRemoved++;
+        }
+        addStep(
+          "Intent sync (empty bundle)",
+          true,
+          `removed ${allIntents.length} intent(s) — bundle had none; intentSyncDeleteOrgWhenBundleEmpty enabled`
+        );
+      } else {
+        addStep(
+          "Intent sync (empty bundle)",
+          true,
+          "No org intents deleted — bundle has zero intents (safety). Enable intentSyncDeleteOrgWhenBundleEmpty to remove all intents for this agent."
+        );
+      }
+    }
+
     addStep(
-      `Intent / action rows (${intentsCreated} new intents)`,
-      errors.length === 0 || intentsCreated > 0,
+      `Intent / action rows (${intentsCreated} new, ${intentsUpdated} updated${intentsRemoved ? `, ${intentsRemoved} removed` : ""})`,
+      errors.length === 0 || intentsCreated > 0 || intentsUpdated > 0 || intentsRemoved > 0,
       errors.length ?
         "Some rows may have failed — see errors"
       : skippedActionNotes.length ?
@@ -1505,7 +1682,7 @@ export async function deployBundleToConnectedOrg(
 
     if (errors.length > 0) {
       addStep("Publish AI_Agent__c (Active)", false, "Skipped due to intent/action errors");
-      return { ok: false, steps, errors };
+      return { ok: false, steps, errors, ...deployAgentMeta };
     }
 
     await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
@@ -1515,11 +1692,11 @@ export async function deployBundleToConnectedOrg(
     addStep("Publish AI_Agent__c (Active)", true);
 
     const ok = errors.length === 0;
-    return { ok, steps, errors };
+    return { ok, steps, errors, ...deployAgentMeta };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     pushErr(msg);
     addStep("Pipeline aborted", false, msg);
-    return { ok: false, steps, errors };
+    return { ok: false, steps, errors, ...deployAgentMeta };
   }
 }

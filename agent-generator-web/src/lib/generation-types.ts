@@ -20,6 +20,11 @@ export const generateRequestSchema = z.object({
   agentModelConnectionName: z.string().optional(),
   dataMappingName: z.string().optional(),
   notes: z.string().optional(),
+  /**
+   * Structured research for the model: which skills/intents to add, change, or remove;
+   * how deploy should behave. Shown in the OpenAI user payload as authoritative guidance.
+   */
+  intentResearchInstructions: z.string().optional(),
   openaiModel: z
     .string()
     .regex(/^[A-Za-z0-9._:-]{2,80}$/)
@@ -31,6 +36,19 @@ export const generateRequestSchema = z.object({
    * Set false to replace entire handler class with generated code only.
    */
   mergeExistingHandler: z.boolean().optional(),
+  /** When true, generated `when 'skill'` blocks replace org for the same skill name. */
+  overwriteMatchingSkills: z.boolean().optional(),
+  /** When true, handler and prompts only keep skills present in this bundle (removes org-only skills). */
+  removeSkillsNotInBundle: z.boolean().optional(),
+  /** Intents: create_only skips existing; upsert updates and replaces actions; sync also deletes intents not in bundle. */
+  intentDeployMode: z.enum(["create_only", "upsert", "sync"]).optional(),
+  /**
+   * When intent mode is sync and the bundle has zero intents: if true, delete all intents for this agent in the org.
+   * Default false (safe — no mass delete when bundle is empty).
+   */
+  intentSyncDeleteOrgWhenBundleEmpty: z.boolean().optional(),
+  /** When true, POST /api/pipeline/run returns NDJSON with live deploy steps + final complete event. */
+  streamDeploy: z.boolean().optional(),
 });
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>;
@@ -101,7 +119,7 @@ export function resolveGenerateParams(
   const extPrefix = p.externalIdPrefix ?? defaults.extPrefix;
   const conn = p.connectionName ?? "GPTfy (OpenAI)";
   const agenticConn = p.agentModelConnectionName ?? "Response API Agentic";
-  const mapping = p.dataMappingName ?? "Prepackaged - Case";
+  const mapping = p.dataMappingName ?? "Account 360 view - GPTfy";
 
   return {
     agentName,
