@@ -294,6 +294,37 @@ export default function GeneratePage() {
           Connect Salesforce, describe the agent, then preview or use{" "}
           <strong className="text-white">Publish to org</strong> for a full pipeline deploy.
         </p>
+        <details className="mt-4 max-w-3xl rounded-lg border border-[var(--border)] bg-black/20 px-4 py-3 text-sm text-[var(--muted)] open:border-cyan-500/30">
+          <summary className="cursor-pointer font-medium text-cyan-200/95">
+            Already have an agent? Add skills or intents incrementally
+          </summary>
+          <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3 text-[13px] leading-relaxed">
+            <p>
+              Use the <strong className="text-white">same</strong>{" "}
+              <span className="text-neutral-300">Agent Developer Name</span>,{" "}
+              <span className="text-neutral-300">Handler class</span>, and{" "}
+              <span className="text-neutral-300">External Id prefix</span> as in Salesforce so the pipeline updates
+              that agent instead of creating a different one.
+            </p>
+            <p>
+              <strong className="text-white">Add a skill:</strong> After you generate (or paste) a bundle, merge{" "}
+              <strong className="text-white">all</strong> skills you want to keep into one handler: each skill needs a{" "}
+              <code className="text-cyan-200/90">when &apos;skill_name&apos;</code> branch{" "}
+              <em className="text-neutral-400">and</em> a matching{" "}
+              <code className="text-cyan-200/90">*_PromptCommand.json</code>. Publish replaces the whole Apex class and
+              upserts prompts by external id, so old skills disappear from the handler if you omit them.
+            </p>
+            <p>
+              <strong className="text-white">Add intents:</strong> In the <strong className="text-white">Intents</strong>{" "}
+              tab, include only <strong className="text-white">new</strong> intent names (snake_case). The deploy step
+              skips intents that already exist for this agent; it does not duplicate or update them.
+            </p>
+            <p className="text-neutral-500">
+              Tip: generate a small use case for the new piece, copy the new skill/intent from the preview, then paste
+              into your full bundle before editing the handler and publishing.
+            </p>
+          </div>
+        </details>
       </div>
 
       {/* Session strip */}
