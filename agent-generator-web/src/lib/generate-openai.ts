@@ -110,6 +110,13 @@ function rewriteHandlerSkillNames(
   return out;
 }
 
+function repairCommonApexSyntax(apex: string): string {
+  let out = apex;
+  // Auto-repair common LLM slip: JSON-style map literals in Apex.
+  out = out.replace(/'([A-Za-z0-9_]+)'\s*:/g, "'$1' =>");
+  return out;
+}
+
 function buildHighQualitySystemPrompt(
   agentName: string,
   useCase: string,
@@ -831,12 +838,13 @@ and explicitly state "Never claim success without tool JSON showing success=true
       params.agentDeveloperName
     );
     const rewrittenHandlerApex = rewriteHandlerSkillNames(d.handlerApex, uniquePrompting.stemMap);
+    const repairedHandlerApex = repairCommonApexSyntax(rewrittenHandlerApex);
     const sanitizedPromptCommands = uniquePrompting.commands.map((pc) => ({
       ...pc,
       content: sanitizePromptCommandContent(pc.content),
     }));
     const handlerErr = validateHandlerApex(
-      rewrittenHandlerApex,
+      repairedHandlerApex,
       params.handlerClass,
       agenticInterface
     );
@@ -866,7 +874,7 @@ and explicitly state "Never claim success without tool JSON showing success=true
       version: 1,
       source: "openai",
       parameters: params,
-      handlerApex: rewrittenHandlerApex,
+      handlerApex: repairedHandlerApex,
       handlerMetaXml: META_XML,
       agentDescription: d.agentDescription,
       agentSystemPrompt: finalSystemPrompt,

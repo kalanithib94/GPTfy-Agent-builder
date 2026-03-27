@@ -110,6 +110,19 @@ System.debug('FullConfig stub: configure intents for ' + targetAgentName);
 `;
 }
 
+function buildTemplateSampleQueries(skillName: string, intentNames: string[]): string[] {
+  const q: string[] = [];
+  q.push(`Use skill ${skillName} to run a health check and summarize the result.`);
+  for (const intent of intentNames) {
+    q.push(`Trigger intent ${intent} and execute its configured action for this request.`);
+  }
+  for (let i = 0; i < 5; i++) {
+    const intent = intentNames[i % Math.max(intentNames.length, 1)] ?? "out_of_scope";
+    q.push(`Use skill ${skillName} first, then apply intent ${intent} follow-up if needed.`);
+  }
+  return Array.from(new Set(q));
+}
+
 export function buildTemplateBundle(
   params: GeneratedBundle["parameters"],
   useCase: string,
@@ -192,6 +205,15 @@ ${useCase}
 Namespace: package subscribers use \`ccai__\` / \`ccai_qa__\` on objects; unpackaged orgs often have no prefix.
 `;
 
+  const starterIntents = defaultIntentDeployPlan(
+    params.agentDeveloperName,
+    params.agentName
+  );
+  const sampleQueries = buildTemplateSampleQueries(
+    skillName,
+    starterIntents.map((x) => x.name)
+  );
+
   return {
     version: 1,
     source: "template",
@@ -204,17 +226,7 @@ Namespace: package subscribers use \`ccai__\` / \`ccai_qa__\` on objects; unpack
     promptCommands: [{ fileName: promptFile, content: promptContent }],
     specMarkdown,
     fullConfigStubApex: buildFullConfigStub(params.agentName, params.handlerClass),
-    intentDeployPlan: defaultIntentDeployPlan(
-      params.agentDeveloperName,
-      params.agentName
-    ),
-    sampleQueries: [
-      "Hi, what can you do?",
-      "Run a health check on the integration.",
-      "What skills are available?",
-      "Can you create a record for me?",
-      "What happens if I give you wrong input?",
-      "Help me with something outside your scope.",
-    ],
+    intentDeployPlan: starterIntents,
+    sampleQueries,
   };
 }
