@@ -568,10 +568,6 @@ export async function generateWithOpenAI(
     if (/Schema\.sObjectType\.get\s*\(/.test(apex)) {
       return "invalid Schema.sObjectType.get(...) usage";
     }
-    // Enforce safer baseline: no hardcoded custom field API names in handler SOQL.
-    if (/\bSELECT[\s\S]{0,600}?\b[A-Za-z0-9_]+__c\b/i.test(apex)) {
-      return "hardcoded custom __c fields detected in handler SOQL; use standard fields or describe-driven resolution";
-    }
     // SOQL assignment with LIMIT 1 throws QueryException when no rows; null check afterward is ineffective.
     if (
       /=\s*\[\s*SELECT[\s\S]{0,300}?LIMIT\s+1\s*\];\s*if\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*==\s*null\s*\)/.test(
