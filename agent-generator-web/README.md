@@ -60,6 +60,16 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## E2E scenarios (Puppeteer)
+
+With the dev server running:
+
+```bash
+npm run test:e2e
+```
+
+Optional: `BASE_URL=http://127.0.0.1:3001` if you use another port, and `HEADLESS=false` to watch the browser. Scenarios cover HTTP health, `/api/session`, main routes, and generate form (accordions, tabs). **Generate only (preview)** requires a Salesforce session: if you are not connected, the test asserts the “Connect Salesforce first” error; after OAuth, it asserts the output panel (template or OpenAI bundle).
+
 ## Deploy on Vercel via GitHub
 
 1. **Push** this repository to GitHub (this monorepo includes `agent-generator-web/` at a subpath).

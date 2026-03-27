@@ -822,6 +822,7 @@ export default function GeneratePage() {
                 Use case <span className="text-red-400">*</span>
               </label>
               <textarea
+                data-testid="e2e-use-case"
                 required
                 minLength={10}
                 rows={10}
@@ -969,6 +970,7 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
         <div className="flex flex-wrap gap-3 items-center">
           <button
             type="submit"
+            data-testid="e2e-btn-generate-preview"
             disabled={loading || pipelineLoading}
             className="rounded-md border border-[var(--border)] bg-[var(--surface)] px-5 py-2.5 font-medium text-white hover:bg-white/5 disabled:opacity-50"
           >
@@ -976,6 +978,7 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
           </button>
           <button
             type="button"
+            data-testid="e2e-btn-publish-pipeline"
             disabled={pipelineLoading || loading}
             onClick={() => runFullPipeline()}
             className="rounded-md bg-emerald-700 px-5 py-2.5 font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
@@ -1094,7 +1097,7 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
       ) : null}
 
       {bundle ? (
-        <div className="space-y-6 border-t border-[var(--border)] pt-10">
+        <div className="space-y-6 border-t border-[var(--border)] pt-10" data-testid="e2e-output-panel">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-semibold text-white">Output</h2>
             <div className="flex flex-wrap gap-2">
