@@ -1,4 +1,9 @@
-import { injectFindByNameSkillsIfMissing } from "./find-by-name-inject";
+import {
+  buildFindByNamePolicyBlock,
+  injectFindByNameSkillsIfMissing,
+  needsFindByNameCoverage,
+  validateFindByNameCoveragePostInject,
+} from "./find-by-name-inject";
 import { repairEmptyPromptCommandSchema } from "./prompt-command-schema-repair";
 import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
 import type { GeneratedBundle } from "./generation-types";
@@ -57,7 +62,8 @@ function buildSkillArtifactsOnlySystemPrompt(
   params: GeneratedBundle["parameters"],
   agenticInterface: string,
   salesforceBlock: string,
-  research: string | undefined
+  research: string | undefined,
+  findByNamePolicyBlock: string
 ): string {
   const r = research?.trim()
     ? `\nAUTHORITATIVE DETAIL (skills / handler — no full agent):\n${research}\n`
@@ -77,6 +83,9 @@ Also return (placeholders allowed if brief):
 
 ${salesforceBlock}
 ${r}
+${findByNamePolicyBlock}
+
+Handler SOQL reminders: **Case** has no **Name** field — use **Subject** / **CaseNumber**. For org URLs use **Url.getOrgDomainUrl().toExternalForm()**, never **getSalesforceBaseUrl()**.
 
 Return ONLY valid JSON (no markdown) with keys: handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan.`;
 }
@@ -215,10 +224,16 @@ function buildHighQualitySystemPrompt(
   useCase: string,
   notes: string | undefined,
   skillNames: string[],
-  intentResearchInstructions?: string | undefined
+  intentResearchInstructions: string | undefined,
+  findByNameRelevant: boolean
 ): string {
   const skills = skillNames.length ? skillNames.join(", ") : "health_Check_Agent";
   const research = intentResearchInstructions?.trim();
+  const findByNameRule =
+    findByNameRelevant ?
+      `- When the user refers to a person, company, case, or deal by **name** (not a Salesforce Id), call the matching **find_*_by_Name** tool first, pick or confirm the record from the results, then run update/create skills using the Id from tool output — **do not** ask the user to paste a 15–18 character Id unless search truly fails or multiple matches need disambiguation.`
+    : `- This use case is primarily list/filter or criteria-based (e.g. open cases with links). Prefer the list/query skills you have; **do not** assume a **find_*_by_Name** tool exists unless it appears in available skills. If the user later asks to resolve one record by name, use name-search tools only if present.`;
+
   return `You are ${agentName}, a Salesforce-first assistant.
 
 Follow Salesforce platform rules: real object and field API names, valid Apex (switch on/when), CRUD checks, and no invented relationship fields (e.g. CaseComment uses ParentId to the Case).
@@ -234,7 +249,7 @@ TOOL USAGE RULES (MANDATORY):
 - For ANY Salesforce read/write operation, call the appropriate tool first.
 - Never claim success unless tool JSON includes success=true.
 - If a required parameter is missing, ask one focused follow-up question.
-- When the user refers to a person, company, case, or deal by **name** (not a Salesforce Id), call the matching **find_*_by_Name** tool first, pick or confirm the record from the results, then run update/create skills using the Id from tool output — **do not** ask the user to paste a 15–18 character Id unless search truly fails or multiple matches need disambiguation.
+${findByNameRule}
 - Available skills in this build: ${skills}
 
 SAFETY AND DATA INTEGRITY:
@@ -824,6 +839,16 @@ export async function generateWithOpenAI(
     ) {
       return "invalid single-row SOQL null-check pattern; use list query + isEmpty()";
     }
+    if (/\bgetSalesforceBaseUrl\s*\(/.test(apex)) {
+      return "Url.getSalesforceBaseUrl() was removed after API 58.0 — use Url.getOrgDomainUrl().toExternalForm() for the org base URL";
+    }
+    // Case has no standard Name field; models often hallucinate WHERE Name / SELECT Name on Case.
+    if (/\bFROM\s+Case\b[\s\S]{0,1200}?\bWHERE\s+Name\b/i.test(apex)) {
+      return "invalid Case SOQL: Case has no Name field — filter on Subject, CaseNumber, Status, etc.";
+    }
+    if (/\bSELECT\s+Name\s+FROM\s+Case\b/i.test(apex) || /\b,\s*Name\s+FROM\s+Case\b/i.test(apex)) {
+      return "invalid Case SOQL: Case has no Name field in SELECT — use Subject, CaseNumber, Id";
+    }
     if (expectedClass.length > 40) {
       return "handler class name exceeds Apex 40 char limit";
     }
@@ -849,15 +874,23 @@ export async function generateWithOpenAI(
       `MODE: SKILLS ONLY — Return "intentDeployPlan": [] (empty array). In intentsConfigMd, briefly note this agent relies on skills only (no GPTfy intent metadata). Put all behavior in promptCommands + handlerApex + agentSystemPrompt.\n\n`
     : "";
 
+  const findByNamePolicyBlock = buildFindByNamePolicyBlock(
+    useCase,
+    options?.intentResearchInstructions
+  );
+
   const system = skillArtifactsOnly ?
     buildSkillArtifactsOnlySystemPrompt(
       params,
       agenticInterface,
       getSalesforceFirstPromptBlock(),
-      research
+      research,
+      findByNamePolicyBlock
     )
   : `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
 ${getSalesforceFirstPromptBlock()}
+${findByNamePolicyBlock}
+
 ${skillsOnlyMode}${researchBlock}
 Return ONLY valid JSON (no markdown) with keys:
 handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan (optional array).
@@ -891,8 +924,9 @@ handlerApex requirements:
 - For "find by Id" queries, do NOT use "SObject x = [SELECT ... LIMIT 1]; if (x == null)". Use list query + isEmpty() and return friendly error when not found.
 - Validate required input parameters in each skill and return err(...) when missing.
 - Keep each skill branch small by delegating to private helper methods (e.g., handleFindOpportunity(parameters)).
-- Prefer standard Salesforce fields in handler SOQL (Id, Name, StageName, CloseDate, AccountId, OwnerId, Status, Priority, Subject, ActivityDate).
+- Prefer standard fields in handler SOQL: **Account, Contact, Lead, Opportunity** use **Name**; **Case** does **not** — use **Subject**, **CaseNumber**, **Status**, **Priority**, **Description** (never WHERE Name or SELECT Name on Case). **Opportunity** uses **Name**, **StageName**, **CloseDate**; **Task** uses **Subject**, **ActivityDate**.
 - **CaseComment:** the lookup to Case is **ParentId** (the Case Id). There is **no** CaseId field on CaseComment — never use CaseComment.CaseId or CaseId= in CaseComment DML/SOQL.
+- **Record links:** Build Lightning URLs by appending "/lightning/r/" + ObjectApiName + "/" + recordId + "/view" to **Url.getOrgDomainUrl().toExternalForm()**. Never use **Url.getSalesforceBaseUrl()** or **System.Url.getSalesforceBaseUrl()** (removed after API 58.0).
 - Do not hardcode custom fields (anything ending in __c) in handler SOQL unless they are first resolved/validated from org metadata.
 - Never use JS-style object syntax ('key': value) in Apex; use Map literals with =>.
 - Never write if (...) conditions with AND / OR; use && / ||.
@@ -910,7 +944,7 @@ promptCommands: array of { "fileName": "my_skill_PromptCommand.json", "content":
 - In required[], include ONLY truly user-supplied mandatory inputs for that skill.
 - Do NOT include system-managed fields in required[] (especially OwnerId, CreatedById, LastModifiedById, Id).
 - If OwnerId is needed, default server-side or infer context; do not force user to provide it in prompt command.
-- **MANDATORY (name-based workflows):** For every standard object your skills create, update, delete, or link (Account, Contact, Case, Lead, Opportunity when applicable), include a **find_{Object}_by_Name** skill so users can resolve records by name. JSON schema pattern matches find_Account_by_Name in the Salesforce_CRM_Agent reference (name search parameter + optional limit). Implement each with SOQL LIKE (list + isEmpty), return primary* Id fields for follow-on tools. Do not require raw Salesforce Ids in user-facing parameters when a name search can run first.
+- **Find-by-name skills:** Obey **FIND-BY-NAME POLICY** at the top of this prompt. When policy says **Include**, add **find_{Object}_by_Name** for objects the use case touches; **Case** uses **Subject** / **CaseNumber** in SOQL (not **Name**); Account/Contact/Lead/Opportunity use **Name**. When policy says **Not required**, skip find_* skills and implement list/filter/query skills only.
 
 intentsConfigMd: markdown, include greeting and out_of_scope intents at minimum.
 
@@ -1105,6 +1139,19 @@ switch on requestParam {
         sanitizePromptCommandContent(pc.content)
       ),
     }));
+    const skillNames = sanitizedPromptCommands
+      .map((pc) => promptStemFromFileName(pc.fileName))
+      .filter(Boolean);
+
+    const findCoverageErr = validateFindByNameCoveragePostInject({
+      useCase,
+      intentResearchInstructions: options?.intentResearchInstructions,
+      unstemmedStems: skillNames,
+    });
+    if (findCoverageErr) {
+      return { ok: false, error: findCoverageErr };
+    }
+
     const handlerErr = validateHandlerApex(
       repairedHandlerApex,
       params.handlerClass,
@@ -1113,10 +1160,6 @@ switch on requestParam {
     if (handlerErr) {
       return { ok: false, error: `Invalid handlerApex: ${handlerErr}` };
     }
-
-    const skillNames = sanitizedPromptCommands
-      .map((pc) => promptStemFromFileName(pc.fileName))
-      .filter(Boolean);
     const intentDeployPlan = skipIntents
       ? []
       : injectCaseCommentIntentIfMissing(
@@ -1132,6 +1175,11 @@ switch on requestParam {
           params.agentDeveloperName
         );
     const systemPromptErr = validateSystemPromptQuality(d.agentSystemPrompt);
+    const findByNameRelevant = needsFindByNameCoverage(
+      useCase,
+      options?.intentResearchInstructions,
+      skillNames
+    );
     const finalSystemPrompt =
       systemPromptErr ?
         buildHighQualitySystemPrompt(
@@ -1139,7 +1187,8 @@ switch on requestParam {
           useCase,
           notes,
           skillNames,
-          options?.intentResearchInstructions
+          options?.intentResearchInstructions,
+          findByNameRelevant
         )
       : d.agentSystemPrompt;
 

@@ -18,7 +18,11 @@ function blob(useCase: string, research: string | undefined): string {
   return `${useCase}\n${research ?? ""}`.toLowerCase();
 }
 
-/** Heuristic: this build touches CRM records by name — needs resolution skills. */
+/**
+ * Heuristic: this use case needs find_{Object}_by_Name skills (name → Id resolution).
+ * False for typical "list all open cases", "show my tickets" (filter/list only); true when
+ * the user must resolve a record from a name/label or do CRUD on a named entity.
+ */
 export function needsFindByNameCoverage(
   useCase: string,
   research: string | undefined,
@@ -26,14 +30,83 @@ export function needsFindByNameCoverage(
 ): boolean {
   const b = blob(useCase, research);
   const stems = unstemmedFileStems.join(" ").toLowerCase();
+
+  // Bulk list / dashboard reads (open cases, record links for each row) — no name-resolution skill.
+  const listOrReportOnly =
+    /\b(list|all|every|show\s+(me\s+)?|give\s+(me\s+)?|display|enumerate)\b/i.test(b) &&
+    /\b(open\s+)?cases?\b|\btickets?\b|\brecords?\b/i.test(b) &&
+    !/\b(named|called|by\s+name|search\s+for|look\s*up|lookup|find\s+(the\s+|a\s+)?(case|account|contact))\b/i.test(
+      b
+    ) &&
+    !/\b(update|edit|close|change|modify|delete|merge|assign|escalat)\b/i.test(b);
+
+  if (listOrReportOnly) {
+    return false;
+  }
+
+  const nameResolution =
+    /\b(by\s+name|named|called|search\s+for|look\s*up|lookup)\b/i.test(b) ||
+    /\bfind\s+(the\s+|a\s+)?(case|account|contact|lead|opportunity|deal|ticket)\b/i.test(b) ||
+    /\b(which|what)\s+(case|account|contact|ticket)\b/i.test(b) ||
+    /\bfor\s+(customer|account|company)\s+/i.test(b);
+
   const crudish =
     /\b(update|create|delete|add|change|modify|edit|merge|link|assign|close|escalat|comment|patient)\b/.test(
       b
-    ) || /(update_|create_|add_|delete_|patch_|comment)/i.test(stems);
+    ) ||
+    /(update_|create_|add_|delete_|patch_|comment)/i.test(stems) ||
+    nameResolution;
+
   const entityish =
-    /\b(contact|account|case|lead|opportunity|patient|ticket|customer)\b/.test(b) ||
+    /\b(contact|account|case|lead|opportunity|patient|ticket|customer|deal)\b/.test(b) ||
     /(contact|account|case|lead|opportunity|patient)/i.test(stems);
+
   return crudish && entityish;
+}
+
+/**
+ * Short policy text for the OpenAI system prompt so the model adds find_* skills only when appropriate.
+ */
+export function buildFindByNamePolicyBlock(
+  useCase: string,
+  research: string | undefined
+): string {
+  const needed = needsFindByNameCoverage(useCase, research, []);
+  const objects = inferStandardObjectsForFindByName(useCase, research, []);
+  const objectsHint =
+    objects.length > 0 ? objects.join(", ") : "each standard object the use case touches";
+
+  if (needed) {
+    return `FIND-BY-NAME POLICY (this use case): **Include** **find_{Object}_by_Name** skills for **${objectsHint}** where users may refer to records by name before updates. Case: search **Subject** / **CaseNumber** (never Case.Name). Account/Contact/Lead/Opportunity: **Name** as usual. Omit find skills for objects the scenario never uses.`;
+  }
+  return `FIND-BY-NAME POLICY (this use case): **Not required** — scenario looks like list/filter/read-only, bulk links, or criteria-based queries without picking one record from a name. **Do not** add find_*_by_Name skills unless the text clearly needs name resolution; keep the handler minimal (e.g. SOQL by Status/OwnerId only).`;
+}
+
+/**
+ * After inject + stem rewrites: if the use case needs name coverage, every inferred object must have a find skill.
+ */
+export function validateFindByNameCoveragePostInject(args: {
+  useCase: string;
+  intentResearchInstructions: string | undefined;
+  unstemmedStems: string[];
+}): string | null {
+  const { useCase, intentResearchInstructions, unstemmedStems } = args;
+  if (!needsFindByNameCoverage(useCase, intentResearchInstructions, unstemmedStems)) {
+    return null;
+  }
+  const objects = inferStandardObjectsForFindByName(
+    useCase,
+    intentResearchInstructions,
+    unstemmedStems
+  );
+  if (objects.length === 0) {
+    return null;
+  }
+  const missing = objects.filter((o) => !alreadyHasFindByNameSkill(unstemmedStems, o));
+  if (missing.length === 0) {
+    return null;
+  }
+  return `Find-by-name skills expected for: ${missing.join(", ")} (use case requires name resolution). Model output was missing these; retry generation.`;
 }
 
 /** Map use case + stems to standard object API names that may need find_by_name. */
