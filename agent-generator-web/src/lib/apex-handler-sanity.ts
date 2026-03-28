@@ -3,6 +3,44 @@
  * Catches common deploy failures before Metadata API compile.
  */
 
+/** Remove block comments so comment text does not confuse downstream checks. */
+function stripBlockComments(apex: string): string {
+  return apex.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+/**
+ * Strip // comments from one line without treating apostrophes inside strings as delimiters.
+ * Apex uses '' (doubled quote) for a literal single quote inside a string.
+ */
+function stripLineSlashSlashComment(line: string): string {
+  let out = "";
+  let i = 0;
+  let inString = false;
+  while (i < line.length) {
+    if (!inString && i + 1 < line.length && line[i] === "/" && line[i + 1] === "/") {
+      break;
+    }
+    const c = line[i];
+    if (c === "'") {
+      if (inString && i + 1 < line.length && line[i + 1] === "'") {
+        out += "''";
+        i += 2;
+        continue;
+      }
+      inString = !inString;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/** Code-only view for heuristics (avoids false positives from "don't" in // comments). */
+function apexCodeOnlyForStringChecks(apex: string): string {
+  const noBlock = stripBlockComments(apex);
+  return noBlock.split(/\r?\n/).map(stripLineSlashSlashComment).join("\n");
+}
+
 /** Repair patterns that are safe to apply without parsing Apex. */
 export function repairHandlerApexCommonIssues(apex: string): string {
   let s = apex;
@@ -32,13 +70,14 @@ export function getHandlerStructuralIssues(apex: string): string[] {
     issues.push("Markdown-style # lines are not valid Apex outside comments");
   }
 
-  // Raw newline before closing quote inside a '...' literal.
-  if (/'[^']*\r?\n/.test(apex)) {
+  const codeOnly = apexCodeOnlyForStringChecks(apex);
+  // Raw newline before closing quote inside a '...' literal (ignore // comment apostrophes).
+  if (/'[^']*\r?\n/.test(codeOnly)) {
     issues.push("Multi-line or unterminated string literal (newline before closing single quote)");
   }
 
   // Double-quoted string literals are not valid Apex (often pasted JSON or JS).
-  if (/=\s*"[^"]*"\s*;/.test(apex) || /\breturn\s+"[^"]*"\s*;/.test(apex)) {
+  if (/=\s*"[^"]*"\s*;/.test(codeOnly) || /\breturn\s+"[^"]*"\s*;/.test(codeOnly)) {
     issues.push('Double-quoted (") string literals are invalid in Apex; use single quotes');
   }
 
