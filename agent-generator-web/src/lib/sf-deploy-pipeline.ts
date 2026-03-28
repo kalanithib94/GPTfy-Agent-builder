@@ -16,6 +16,7 @@ import {
   getHandlerStructuralIssues,
   repairHandlerApexCommonIssues,
 } from "./apex-handler-sanity";
+import { preflightValidateHandlerSoqlCustomFields } from "./apex-soql-field-preflight";
 import { mergeHandlerApexWithOrg } from "./apex-handler-merge";
 import { getOpenAIApiKey, getOpenAIModel } from "./openai-server-config";
 
@@ -903,6 +904,26 @@ export async function deployBundleToConnectedOrg(
 
     handlerApexToDeploy = repairCaseCommentCaseIdToParentId(handlerApexToDeploy);
     handlerApexToDeploy = repairHandlerApexCommonIssues(handlerApexToDeploy);
+
+    const soqlFieldIssues = await preflightValidateHandlerSoqlCustomFields(
+      instanceUrl,
+      token,
+      API_VER,
+      handlerApexToDeploy
+    );
+    addStep(
+      "Validate handler SOQL fields (describe)",
+      soqlFieldIssues.length === 0,
+      soqlFieldIssues.length === 0 ?
+        "Custom __c fields in bracket SOQL match org describe"
+      : soqlFieldIssues.slice(0, 4).join(" · ")
+    );
+    if (soqlFieldIssues.length > 0) {
+      for (const msg of soqlFieldIssues) {
+        pushErr(`SOQL field: ${msg}`);
+      }
+      return { ok: false, steps, errors };
+    }
 
     const preflightIssues = preflightValidateHandlerApex(handlerApexToDeploy, availableObjects);
     if (preflightIssues.length > 0) {
