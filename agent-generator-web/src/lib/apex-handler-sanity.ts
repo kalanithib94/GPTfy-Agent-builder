@@ -3,11 +3,6 @@
  * Catches common deploy failures before Metadata API compile.
  */
 
-/** Remove block comments so comment text does not confuse downstream checks. */
-function stripBlockComments(apex: string): string {
-  return apex.replace(/\/\*[\s\S]*?\*\//g, "");
-}
-
 /**
  * Strip // comments from one line without treating apostrophes inside strings as delimiters.
  * Apex uses '' (doubled quote) for a literal single quote inside a string.
@@ -37,8 +32,7 @@ function stripLineSlashSlashComment(line: string): string {
 
 /** Code-only view for heuristics (avoids false positives from "don't" in // comments). */
 function apexCodeOnlyForStringChecks(apex: string): string {
-  const noBlock = stripBlockComments(apex);
-  return noBlock.split(/\r?\n/).map(stripLineSlashSlashComment).join("\n");
+  return apex.split(/\r?\n/).map(stripLineSlashSlashComment).join("\n");
 }
 
 /** Repair patterns that are safe to apply without parsing Apex. */
@@ -71,10 +65,9 @@ export function getHandlerStructuralIssues(apex: string): string[] {
   }
 
   const codeOnly = apexCodeOnlyForStringChecks(apex);
-  // Raw newline before closing quote inside a '...' literal (ignore // comment apostrophes).
-  if (/'[^']*\r?\n/.test(codeOnly)) {
-    issues.push("Multi-line or unterminated string literal (newline before closing single quote)");
-  }
+  // Note: we do not flag multiline '...' strings here — regex checks were prone to false
+  // positives (e.g. block-comment stripping inside strings) and to apostrophe edge cases.
+  // Salesforce compile remains the source of truth for string literals.
 
   // Double-quoted string literals are not valid Apex (often pasted JSON or JS).
   if (/=\s*"[^"]*"\s*;/.test(codeOnly) || /\breturn\s+"[^"]*"\s*;/.test(codeOnly)) {
