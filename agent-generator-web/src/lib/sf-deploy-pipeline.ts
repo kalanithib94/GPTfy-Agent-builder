@@ -11,6 +11,7 @@ import { refreshSalesforceAccessToken } from "./sf-token-refresh";
 import type { SfSessionData } from "./session";
 import { readFile } from "fs/promises";
 import path from "path";
+import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
 import { mergeHandlerApexWithOrg } from "./apex-handler-merge";
 import { getOpenAIApiKey, getOpenAIModel } from "./openai-server-config";
 
@@ -845,6 +846,8 @@ export async function deployBundleToConnectedOrg(
       }
     }
 
+    handlerApexToDeploy = repairCaseCommentCaseIdToParentId(handlerApexToDeploy);
+
     const preflightIssues = preflightValidateHandlerApex(handlerApexToDeploy, availableObjects);
     if (preflightIssues.length > 0) {
       const onlyUnavailableObjectIssue = preflightIssues.every((x) =>
@@ -887,6 +890,7 @@ export async function deployBundleToConnectedOrg(
       return { ok: false, steps, errors };
     }
     addStep("Deploy Apex class", true, bundle.parameters.handlerClass);
+    bundle.handlerApex = handlerApexToDeploy;
 
     let promptConnId: string | null = null;
     for (const name of [

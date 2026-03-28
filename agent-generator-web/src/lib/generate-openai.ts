@@ -1,3 +1,4 @@
+import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
 import type { GeneratedBundle } from "./generation-types";
 import { intentDeployPlanSchema } from "./intent-deploy-types";
 import { buildCoverageSampleQueries } from "./sample-queries";
@@ -168,6 +169,7 @@ function repairJavaStyleSwitchOnRequestParam(apex: string): string {
 
 function repairCommonApexSyntax(apex: string): string {
   let out = repairJavaStyleSwitchOnRequestParam(apex);
+  out = repairCaseCommentCaseIdToParentId(out);
   // Auto-repair common LLM slip: JSON-style map literals in Apex.
   out = out.replace(/'([A-Za-z0-9_]+)'\s*:/g, "'$1' =>");
   return out;
@@ -673,6 +675,7 @@ handlerApex requirements:
 - Validate required input parameters in each skill and return err(...) when missing.
 - Keep each skill branch small by delegating to private helper methods (e.g., handleFindOpportunity(parameters)).
 - Prefer standard Salesforce fields in handler SOQL (Id, Name, StageName, CloseDate, AccountId, OwnerId, Status, Priority, Subject, ActivityDate).
+- **CaseComment:** the lookup to Case is **ParentId** (the Case Id). There is **no** CaseId field on CaseComment — never use CaseComment.CaseId or CaseId= in CaseComment DML/SOQL.
 - Do not hardcode custom fields (anything ending in __c) in handler SOQL unless they are first resolved/validated from org metadata.
 - Never use JS-style object syntax ('key': value) in Apex; use Map literals with =>.
 - Never write if (...) conditions with AND / OR; use && / ||.
