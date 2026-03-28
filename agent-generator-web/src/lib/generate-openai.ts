@@ -129,8 +129,45 @@ function rewriteHandlerSkillNames(
   return out;
 }
 
+/**
+ * LLMs often emit Java-style switch/case. Apex requires switch on ... when ... {}.
+ * Best-effort rewrite so validation passes for common single-return branches.
+ */
+function repairJavaStyleSwitchOnRequestParam(apex: string): string {
+  let s = apex.replace(/\bswitch\s*\(\s*requestParam\s*\)/g, "switch on requestParam");
+
+  // Same-line: case 'stem': return ...;
+  s = s.replace(
+    /\bcase\s+'([^']+)'\s*:\s*return\s+([^;]+);/g,
+    "when '$1' { return $2; }"
+  );
+  // Next-line return after case 'stem':
+  s = s.replace(
+    /\bcase\s+'([^']+)'\s*:\s*\r?\n(\s*)return\s+([^;]+);/g,
+    "when '$1' {\n$2return $3; }"
+  );
+  // Unquoted case stem (invalid Apex but models emit it): case stem: return ...;
+  s = s.replace(
+    /\bcase\s+([A-Za-z][A-Za-z0-9_]*)\s*:\s*return\s+([^;]+);/g,
+    "when '$1' { return $2; }"
+  );
+  s = s.replace(
+    /\bcase\s+([A-Za-z][A-Za-z0-9_]*)\s*:\s*\r?\n(\s*)return\s+([^;]+);/g,
+    "when '$1' {\n$2return $3; }"
+  );
+
+  // default: return ...;
+  s = s.replace(/\bdefault\s*:\s*return\s+([^;]+);/g, "when else { return $1; }");
+  s = s.replace(
+    /\bdefault\s*:\s*\r?\n(\s*)return\s+([^;]+);/g,
+    "when else {\n$1return $2; }"
+  );
+
+  return s;
+}
+
 function repairCommonApexSyntax(apex: string): string {
-  let out = apex;
+  let out = repairJavaStyleSwitchOnRequestParam(apex);
   // Auto-repair common LLM slip: JSON-style map literals in Apex.
   out = out.replace(/'([A-Za-z0-9_]+)'\s*:/g, "'$1' =>");
   return out;
@@ -701,7 +738,19 @@ Include sections for:
 - SAFETY AND DATA INTEGRITY
 - ERROR-HANDLING POLICY
 - RESPONSE STYLE
-and explicitly state "Never claim success without tool JSON showing success=true".`;
+and explicitly state "Never claim success without tool JSON showing success=true".
+
+4) INVALID vs VALID switch (handler must use VALID):
+INVALID — do not output this:
+switch (requestParam) {
+  case 'my_prefix_skill': return doWork(parameters);
+  default: return err('Unsupported');
+}
+VALID — required Apex shape:
+switch on requestParam {
+  when 'my_prefix_skill' { return doWork(parameters); }
+  when else { return err('Unsupported'); }
+}`;
 
   const compactUseCase = compactUseCaseForGeneration(useCase);
   const user = JSON.stringify({
