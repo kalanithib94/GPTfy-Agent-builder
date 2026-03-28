@@ -937,7 +937,9 @@ handlerApex requirements:
 - private helpers **private String err(String)** and **private String ok(Map<String, Object>)** — **never void**; both **return** JSON.serialize(...) strings
 - Do not put markdown (# headings) or prose inside the Apex class. No line breaks inside single-quoted string literals (use \\n or concatenate strings)
 - if parameters == null, initialize new Map<String, Object>()
-- System.debug(LoggingLevel.ERROR, 'PREFIX | ...') for diagnostics; never use variable name desc
+- System.debug(LoggingLevel.ERROR, 'PREFIX | ...') for diagnostics; **never** declare or use an Apex variable named **desc** (use descriptionText, msg, etc.). SOQL sort direction must be spelled **DESC** / **ASC** as keywords with a space after the field (e.g. ORDER BY ActivityDate DESC).
+- **String checks:** use **String.isBlank(variable)** with exactly one argument — never **String.isBlank()** with no argument.
+- **Aggregates:** do not use **MAX(ActivityDate)** or **MIN(ActivityDate)** on Task (and similar); use **ORDER BY ActivityDate DESC LIMIT 1** or non-aggregate queries instead.
 - CRUD checks via Schema.sObjectType or isAccessible/isCreateable as appropriate
 - with sharing
 - NEVER output Java-style "case ...:" syntax; Apex must use "switch on ... { when ... { ... } when else { ... } }".

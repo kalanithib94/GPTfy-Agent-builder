@@ -74,5 +74,23 @@ export function getHandlerStructuralIssues(apex: string): string[] {
     issues.push('Double-quoted (") string literals are invalid in Apex; use single quotes');
   }
 
+  // LLM uses `desc` as variable — breaks parsing / ORDER BY confusion; forbidden in our prompts.
+  if (/\bString\s+desc\b/.test(apex) || /\b(desc)\s*[=;)]/.test(apex)) {
+    issues.push(
+      "Do not use 'desc' as a variable name — use descriptionText or msg; keep ORDER BY ... DESC as SOQL keywords"
+    );
+  }
+
+  if (/\bString\.isBlank\s*\(\s*\)/.test(apex)) {
+    issues.push("String.isBlank() requires one argument — use String.isBlank(value)");
+  }
+
+  // MAX(ActivityDate) often fails compile on Task; prefer ORDER BY ActivityDate DESC LIMIT 1.
+  if (/\bMAX\s*\(\s*ActivityDate\s*\)/i.test(apex)) {
+    issues.push(
+      "Avoid MAX(ActivityDate) in aggregate SOQL — use ORDER BY ActivityDate DESC LIMIT 1 or another field that supports aggregates"
+    );
+  }
+
   return issues;
 }
