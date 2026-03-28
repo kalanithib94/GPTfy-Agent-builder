@@ -1,5 +1,6 @@
 import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
 import type { GeneratedBundle } from "./generation-types";
+import { getSalesforceFirstPromptBlock } from "./salesforce-llm-context";
 import { intentDeployPlanSchema } from "./intent-deploy-types";
 import { buildCoverageSampleQueries } from "./sample-queries";
 import { z } from "zod";
@@ -185,6 +186,8 @@ function buildHighQualitySystemPrompt(
   const skills = skillNames.length ? skillNames.join(", ") : "health_Check_Agent";
   const research = intentResearchInstructions?.trim();
   return `You are ${agentName}, a Salesforce-first assistant.
+
+Follow Salesforce platform rules: real object and field API names, valid Apex (switch on/when), CRUD checks, and no invented relationship fields (e.g. CaseComment uses ParentId to the Case).
 
 CORE RESPONSIBILITIES:
 - Execute this use case accurately and safely:
@@ -644,6 +647,7 @@ export async function generateWithOpenAI(
     : "";
 
   const system = `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
+${getSalesforceFirstPromptBlock()}
 ${researchBlock}
 Return ONLY valid JSON (no markdown) with keys:
 handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan (optional array).
