@@ -1,5 +1,6 @@
 import type { GeneratedBundle } from "./generation-types";
 import { intentDeployPlanSchema } from "./intent-deploy-types";
+import { buildCoverageSampleQueries } from "./sample-queries";
 import { z } from "zod";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -174,66 +175,6 @@ RESPONSE STYLE:
 - After each completed tool action, summarize result and next action.
 - If uncertain, say what is unknown and what you need next.
 `;
-}
-
-function buildDefaultSampleQueries(agentName: string, skillNames: string[]): string[] {
-  const queries: string[] = [
-    "Hi, what can you do?",
-    `What skills does ${agentName} have?`,
-  ];
-  for (const skill of skillNames.slice(0, 6)) {
-    const readable = skill.replace(/_/g, " ");
-    queries.push(`Can you ${readable}?`);
-  }
-  queries.push(
-    "What happens if I give you wrong input?",
-    "Can you help me with something outside your scope?"
-  );
-  return queries.slice(0, 10);
-}
-
-function humanizeName(v: string): string {
-  return v
-    .replace(/[_\-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function buildCoverageSampleQueries(
-  agentName: string,
-  skillNames: string[],
-  intents: IntentPlanItem[] | undefined
-): string[] {
-  const cleanSkills = Array.from(new Set(skillNames.filter(Boolean)));
-  const cleanIntents = Array.from(
-    new Set((intents ?? []).map((i) => (i.name ?? "").trim()).filter(Boolean))
-  );
-  const queries: string[] = [];
-
-  // One query per skill.
-  for (const skill of cleanSkills) {
-    queries.push(`Use skill ${skill} to help with ${humanizeName(skill)} for me.`);
-  }
-
-  // One query per intent.
-  for (const intent of cleanIntents) {
-    queries.push(`Trigger intent ${intent} and execute its configured actions for this request.`);
-  }
-
-  // Five mixed queries (intent + skill in one ask).
-  const mixCount = Math.max(5, cleanSkills.length && cleanIntents.length ? 5 : 0);
-  for (let i = 0; i < mixCount; i++) {
-    const s = cleanSkills[i % Math.max(cleanSkills.length, 1)] ?? "health_Check_Agent";
-    const it = cleanIntents[i % Math.max(cleanIntents.length, 1)] ?? "out_of_scope";
-    queries.push(
-      `Use skill ${s} first, then apply intent ${it} follow-up action if risk or missing info is detected.`
-    );
-  }
-
-  // Keep order, remove duplicates, ensure non-empty.
-  const deduped = Array.from(new Set(queries.map((q) => q.trim()).filter(Boolean)));
-  if (!deduped.length) return buildDefaultSampleQueries(agentName, cleanSkills);
-  return deduped;
 }
 
 function validateSystemPromptQuality(systemPrompt: string): string | null {
@@ -716,7 +657,7 @@ intentsConfigMd: markdown, include greeting and out_of_scope intents at minimum.
 
 fullConfigStubApex: optional Apex snippet as string with String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}'; and TODO comments.
 
-sampleQueries: array of 10 example questions a user can ask this agent after deploy. Mix skill-based queries (triggering handler tools), intent-based queries (triggering intent actions), greetings, and edge cases.
+sampleQueries: array of 10 short questions phrased exactly as **real customers** would type or say (e.g. "Can you update my case?", "Hi, I need help with my ticket"). Do NOT use internal phrases like "Use skill", "Trigger intent", raw Apex/skill names, or "execute its configured actions" — natural language only. Mix greetings, typical requests, and edge cases.
 
 EXAMPLES (follow these patterns exactly):
 1) Handler branch pattern:

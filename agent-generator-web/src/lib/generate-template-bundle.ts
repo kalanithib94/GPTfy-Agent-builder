@@ -1,5 +1,6 @@
 import type { GeneratedBundle } from "./generation-types";
 import { defaultIntentDeployPlan } from "./intent-deploy-types";
+import { buildTemplateSampleQueries } from "./sample-queries";
 
 const META_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -108,19 +109,6 @@ String targetAgentName = '${agentName.replace(/'/g, "\\'")}';
 // Handler: ${handlerClass}
 System.debug('FullConfig stub: configure intents for ' + targetAgentName);
 `;
-}
-
-function buildTemplateSampleQueries(skillName: string, intentNames: string[]): string[] {
-  const q: string[] = [];
-  q.push(`Use skill ${skillName} to run a health check and summarize the result.`);
-  for (const intent of intentNames) {
-    q.push(`Trigger intent ${intent} and execute its configured action for this request.`);
-  }
-  for (let i = 0; i < 5; i++) {
-    const intent = intentNames[i % Math.max(intentNames.length, 1)] ?? "out_of_scope";
-    q.push(`Use skill ${skillName} first, then apply intent ${intent} follow-up if needed.`);
-  }
-  return Array.from(new Set(q));
 }
 
 export function buildTemplateBundle(
