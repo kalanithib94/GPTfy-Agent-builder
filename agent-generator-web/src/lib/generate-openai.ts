@@ -6,6 +6,10 @@ import {
 } from "./find-by-name-inject";
 import { repairEmptyPromptCommandSchema } from "./prompt-command-schema-repair";
 import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
+import {
+  getHandlerStructuralIssues,
+  repairHandlerApexCommonIssues,
+} from "./apex-handler-sanity";
 import type { GeneratedBundle } from "./generation-types";
 import { getSalesforceFirstPromptBlock } from "./salesforce-llm-context";
 import { intentDeployPlanSchema } from "./intent-deploy-types";
@@ -84,6 +88,8 @@ Also return (placeholders allowed if brief):
 ${salesforceBlock}
 ${r}
 ${findByNamePolicyBlock}
+
+Handler shape: **private String err(String)** and **private String ok(Map<String, Object>)** with **return** JSON.serialize(...); never **void**. No markdown (#) or multi-line string literals inside the class.
 
 Handler SOQL reminders: **Case** has no **Name** field — use **Subject** / **CaseNumber**. For org URLs use **Url.getOrgDomainUrl().toExternalForm()**, never **getSalesforceBaseUrl()**.
 
@@ -212,7 +218,8 @@ function repairJavaStyleSwitchOnRequestParam(apex: string): string {
 }
 
 function repairCommonApexSyntax(apex: string): string {
-  let out = repairJavaStyleSwitchOnRequestParam(apex);
+  let out = repairHandlerApexCommonIssues(apex);
+  out = repairJavaStyleSwitchOnRequestParam(out);
   out = repairCaseCommentCaseIdToParentId(out);
   // Auto-repair common LLM slip: JSON-style map literals in Apex.
   out = out.replace(/'([A-Za-z0-9_]+)'\s*:/g, "'$1' =>");
@@ -852,6 +859,10 @@ export async function generateWithOpenAI(
     if (expectedClass.length > 40) {
       return "handler class name exceeds Apex 40 char limit";
     }
+    const structural = getHandlerStructuralIssues(apex);
+    if (structural.length > 0) {
+      return structural.join("; ");
+    }
     return null;
   };
 
@@ -914,7 +925,8 @@ handlerApex requirements:
 - global with sharing class ${params.handlerClass} implements ${agenticInterface}
 - Method: global String executeMethod(String requestParam, Map<String, Object> parameters)
 - switch on requestParam — each when value MUST match the skill name used in promptCommands file names (stem before _PromptCommand.json per Deploy-GptfyUseCasePipeline.ps1)
-- private helpers err(String), ok(Map) returning JSON.serialize with success/status/message pattern
+- private helpers **private String err(String)** and **private String ok(Map<String, Object>)** — **never void**; both **return** JSON.serialize(...) strings
+- Do not put markdown (# headings) or prose inside the Apex class. No line breaks inside single-quoted string literals (use \\n or concatenate strings)
 - if parameters == null, initialize new Map<String, Object>()
 - System.debug(LoggingLevel.ERROR, 'PREFIX | ...') for diagnostics; never use variable name desc
 - CRUD checks via Schema.sObjectType or isAccessible/isCreateable as appropriate

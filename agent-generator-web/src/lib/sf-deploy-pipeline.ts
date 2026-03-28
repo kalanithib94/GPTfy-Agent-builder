@@ -12,6 +12,10 @@ import type { SfSessionData } from "./session";
 import { readFile } from "fs/promises";
 import path from "path";
 import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
+import {
+  getHandlerStructuralIssues,
+  repairHandlerApexCommonIssues,
+} from "./apex-handler-sanity";
 import { mergeHandlerApexWithOrg } from "./apex-handler-merge";
 import { getOpenAIApiKey, getOpenAIModel } from "./openai-server-config";
 
@@ -256,6 +260,7 @@ function stripCodeFences(text: string): string {
 
 function preflightValidateHandlerApex(apex: string, availableObjects?: Set<string>): string[] {
   const issues: string[] = [];
+  issues.push(...getHandlerStructuralIssues(apex));
   if (/'[A-Za-z0-9_]+'\s*:/.test(apex)) {
     issues.push("JS-style key:value syntax detected; Apex Map literals must use =>");
   }
@@ -897,6 +902,7 @@ export async function deployBundleToConnectedOrg(
     }
 
     handlerApexToDeploy = repairCaseCommentCaseIdToParentId(handlerApexToDeploy);
+    handlerApexToDeploy = repairHandlerApexCommonIssues(handlerApexToDeploy);
 
     const preflightIssues = preflightValidateHandlerApex(handlerApexToDeploy, availableObjects);
     if (preflightIssues.length > 0) {
