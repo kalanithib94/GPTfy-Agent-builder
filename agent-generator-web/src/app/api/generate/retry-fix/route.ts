@@ -3,6 +3,7 @@ import { z } from "zod";
 import { generateWithOpenAI } from "@/lib/generate-openai";
 import { generatedBundleSchema } from "@/lib/generation-types";
 import { getOpenAIApiKey } from "@/lib/openai-server-config";
+import { buildOpenAIOrgContext } from "@/lib/org-sfdc-field-hints";
 import { getSfSession } from "@/lib/session";
 
 const retryFixSchema = z.object({
@@ -43,15 +44,20 @@ export async function POST(request: Request) {
 
   const session = await getSfSession();
   const p = parsed.data;
+  const openAiOrgContext = await buildOpenAIOrgContext({
+    instanceUrl: session.instanceUrl ?? undefined,
+    accessToken: session.accessToken ?? undefined,
+    gptfyNamespace: session.gptfyNamespace,
+    useCase: p.useCase,
+    notes: p.notes,
+    intentResearchInstructions: p.intentResearchInstructions,
+  });
   const ai = await generateWithOpenAI(
     openaiKey,
     p.bundle.parameters,
     p.useCase,
     p.notes,
-    {
-      instanceUrl: session.instanceUrl,
-      gptfyNamespace: session.gptfyNamespace,
-    },
+    openAiOrgContext,
     {
       modelOverride: p.openaiModel,
       previousHandlerApex: p.bundle.handlerApex,

@@ -67,7 +67,8 @@ function buildSkillArtifactsOnlySystemPrompt(
   agenticInterface: string,
   salesforceBlock: string,
   research: string | undefined,
-  findByNamePolicyBlock: string
+  findByNamePolicyBlock: string,
+  sfdcHintsBlock: string
 ): string {
   const r = research?.trim()
     ? `\nAUTHORITATIVE DETAIL (skills / handler — no full agent):\n${research}\n`
@@ -88,7 +89,7 @@ Also return (placeholders allowed if brief):
 ${salesforceBlock}
 ${r}
 ${findByNamePolicyBlock}
-
+${sfdcHintsBlock}
 Handler shape: **private String err(String)** and **private String ok(Map<String, Object>)** with **return** JSON.serialize(...); never **void**. No markdown (#) or multi-line string literals inside the class.
 
 Handler SOQL reminders: **Case** has no **Name** field — use **Subject** / **CaseNumber**. For org URLs use **Url.getOrgDomainUrl().toExternalForm()**, never **getSalesforceBaseUrl()**.
@@ -769,6 +770,8 @@ export async function generateWithOpenAI(
   orgContext: {
     instanceUrl?: string;
     gptfyNamespace?: string;
+    /** Describe() output — which __c fields exist; prevents invented custom fields in SOQL */
+    sfdcFieldHintsText?: string;
   },
   options?: GenerateWithOpenAIOptions
 ): Promise<OpenAIResult> {
@@ -890,18 +893,24 @@ export async function generateWithOpenAI(
     options?.intentResearchInstructions
   );
 
+  const sfdcHints = orgContext.sfdcFieldHintsText?.trim();
+  const sfdcHintsBlock = sfdcHints
+    ? `\n\nAUTHORITATIVE CONNECTED-ORG FIELD METADATA (from Salesforce **describe** — loading 2780 object **names** does not include **fields**). Obey in **all** handler SOQL; **never** invent __c API names that are not listed for that object:\n${sfdcHints}\n`
+    : "";
+
   const system = skillArtifactsOnly ?
     buildSkillArtifactsOnlySystemPrompt(
       params,
       agenticInterface,
       getSalesforceFirstPromptBlock(),
       research,
-      findByNamePolicyBlock
+      findByNamePolicyBlock,
+      sfdcHintsBlock
     )
   : `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
 ${getSalesforceFirstPromptBlock()}
 ${findByNamePolicyBlock}
-
+${sfdcHintsBlock}
 ${skillsOnlyMode}${researchBlock}
 Return ONLY valid JSON (no markdown) with keys:
 handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan (optional array).

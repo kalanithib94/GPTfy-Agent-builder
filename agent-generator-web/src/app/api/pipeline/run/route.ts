@@ -58,6 +58,7 @@ export async function POST(request: Request) {
   const orgContext = {
     instanceUrl: session.instanceUrl,
     gptfyNamespace: session.gptfyNamespace,
+    accessToken: session.accessToken,
   };
 
   async function runOrgValidation() {

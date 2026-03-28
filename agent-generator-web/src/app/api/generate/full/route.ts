@@ -7,6 +7,7 @@ import {
 } from "@/lib/generation-types";
 import { defaultIntentDeployPlan } from "@/lib/intent-deploy-types";
 import { getOpenAIApiKey } from "@/lib/openai-server-config";
+import { buildOpenAIOrgContext } from "@/lib/org-sfdc-field-hints";
 import { getSfSession } from "@/lib/session";
 
 export async function POST(request: Request) {
@@ -42,15 +43,20 @@ export async function POST(request: Request) {
   let warnings: string[] = [];
 
   if (!useTemplate) {
+    const openAiOrgContext = await buildOpenAIOrgContext({
+      instanceUrl: session.instanceUrl ?? undefined,
+      accessToken: session.accessToken ?? undefined,
+      gptfyNamespace: session.gptfyNamespace,
+      useCase: p.useCase,
+      notes: p.notes,
+      intentResearchInstructions: p.intentResearchInstructions,
+    });
     const ai = await generateWithOpenAI(
       openaiKey!,
       params,
       p.useCase,
       p.notes,
-      {
-        instanceUrl: session.instanceUrl,
-        gptfyNamespace: session.gptfyNamespace,
-      },
+      openAiOrgContext,
       {
         modelOverride: p.openaiModel,
         intentResearchInstructions: p.intentResearchInstructions,

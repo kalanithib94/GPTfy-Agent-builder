@@ -3,6 +3,7 @@ import { generateWithOpenAI } from "@/lib/generate-openai";
 import type { GenerateRequest, GeneratedBundle } from "@/lib/generation-types";
 import { resolveGenerateParams } from "@/lib/generation-types";
 import { getOpenAIApiKey } from "@/lib/openai-server-config";
+import { buildOpenAIOrgContext } from "@/lib/org-sfdc-field-hints";
 
 export type PipelineBundleResult = {
   bundle: GeneratedBundle;
@@ -15,7 +16,7 @@ export type PipelineBundleResult = {
  */
 export async function buildBundleForPipeline(
   p: GenerateRequest,
-  orgContext: { instanceUrl: string; gptfyNamespace?: string }
+  orgContext: { instanceUrl: string; gptfyNamespace?: string; accessToken: string }
 ): Promise<PipelineBundleResult> {
   const params = resolveGenerateParams(p);
   const openaiKey = await getOpenAIApiKey();
@@ -24,13 +25,22 @@ export async function buildBundleForPipeline(
   const warnings: string[] = [];
   let bundle: GeneratedBundle;
 
+  const openAiOrgContext = await buildOpenAIOrgContext({
+    instanceUrl: orgContext.instanceUrl,
+    accessToken: orgContext.accessToken,
+    gptfyNamespace: orgContext.gptfyNamespace,
+    useCase: p.useCase,
+    notes: p.notes,
+    intentResearchInstructions: p.intentResearchInstructions,
+  });
+
   if (!useTemplate) {
     const ai = await generateWithOpenAI(
       openaiKey!,
       params,
       p.useCase,
       p.notes,
-      orgContext,
+      openAiOrgContext,
       {
         modelOverride: p.openaiModel,
         intentResearchInstructions: p.intentResearchInstructions,
