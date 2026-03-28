@@ -16,6 +16,10 @@ const deployBodySchema = z.object({
   removeSkillsNotInBundle: z.boolean().optional(),
   intentDeployMode: z.enum(["create_only", "upsert", "sync"]).optional(),
   intentSyncDeleteOrgWhenBundleEmpty: z.boolean().optional(),
+  /** Skip AI_Agent_Intent__c / action / detail DML and describe. */
+  skipIntents: z.boolean().optional(),
+  /** Apex + AI_Prompt__c only; no AI_Agent__c / skill junctions. */
+  skillArtifactsOnly: z.boolean().optional(),
   /** When true, response is NDJSON stream with live deploy steps + final complete event. */
   stream: z.boolean().optional(),
 });
@@ -51,6 +55,8 @@ export async function POST(request: Request) {
     removeSkillsNotInBundle,
     intentDeployMode,
     intentSyncDeleteOrgWhenBundleEmpty,
+    skipIntents,
+    skillArtifactsOnly,
     stream,
   } = parsed.data;
 
@@ -60,6 +66,8 @@ export async function POST(request: Request) {
     removeSkillsNotInBundle: removeSkillsNotInBundle === true,
     intentDeployMode,
     intentSyncDeleteOrgWhenBundleEmpty: intentSyncDeleteOrgWhenBundleEmpty === true,
+    skipIntents: skipIntents === true,
+    skillArtifactsOnly: skillArtifactsOnly === true,
   };
 
   async function runOrgValidation() {

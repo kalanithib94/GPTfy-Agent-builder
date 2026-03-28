@@ -54,6 +54,8 @@ export async function POST(request: Request) {
       {
         modelOverride: p.openaiModel,
         intentResearchInstructions: p.intentResearchInstructions,
+        skipIntents: p.skipIntents === true,
+        skillArtifactsOnly: p.skillArtifactsOnly === true,
       }
     );
     if (ai.ok) {
@@ -75,7 +77,9 @@ export async function POST(request: Request) {
     });
   }
 
-  if (!bundle.intentDeployPlan?.length) {
+  if (p.skipIntents === true || p.skillArtifactsOnly === true) {
+    bundle.intentDeployPlan = [];
+  } else if (!bundle.intentDeployPlan?.length) {
     bundle.intentDeployPlan = defaultIntentDeployPlan(
       bundle.parameters.agentDeveloperName,
       bundle.parameters.agentName

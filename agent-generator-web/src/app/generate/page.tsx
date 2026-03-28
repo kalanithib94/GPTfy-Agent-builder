@@ -150,6 +150,10 @@ export default function GeneratePage() {
   /** Sync + empty intent list: allow deleting every org intent (dangerous). */
   const [intentSyncDeleteOrgWhenBundleEmpty, setIntentSyncDeleteOrgWhenBundleEmpty] =
     useState(false);
+  /** When true: generation omits intent plans; deploy skips GPTfy intent metadata (no AI_Agent_Intent__c describe/DML). */
+  const [skipIntents, setSkipIntents] = useState(false);
+  /** Prompt + Apex only: no AI_Agent__c / AI_Agent_Skill__c deploy; you attach prompts to an agent manually. */
+  const [skillArtifactsOnly, setSkillArtifactsOnly] = useState(false);
 
   const [bundle, setBundle] = useState<GeneratedBundle | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -170,6 +174,13 @@ export default function GeneratePage() {
   const [deployLiveErrors, setDeployLiveErrors] = useState<string[]>([]);
   const [accordionOpen, setAccordionOpen] =
     useState<Record<AccordionId, boolean>>(DEFAULT_ACCORDION);
+
+  /** Rows from connected org — used to set Developer Name + display name without manual copy/paste. */
+  const [orgAgents, setOrgAgents] = useState<
+    { id: string; name: string; developerName: string }[]
+  >([]);
+  const [orgAgentsLoading, setOrgAgentsLoading] = useState(false);
+  const [orgAgentsError, setOrgAgentsError] = useState<string | null>(null);
 
   const toggleAccordion = useCallback((id: AccordionId) => {
     setAccordionOpen((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -193,6 +204,45 @@ export default function GeneratePage() {
   useEffect(() => {
     loadSession();
   }, [loadSession]);
+
+  const loadOrgAgents = useCallback(async () => {
+    setOrgAgentsLoading(true);
+    setOrgAgentsError(null);
+    try {
+      const res = await fetch("/api/org/agents", { cache: "no-store" });
+      const data = (await res.json()) as {
+        agents?: { id: string; name: string; developerName: string }[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setOrgAgentsError(data.error ?? "Could not list agents");
+        setOrgAgents([]);
+        return;
+      }
+      setOrgAgents(Array.isArray(data.agents) ? data.agents : []);
+    } catch {
+      setOrgAgentsError("Network error loading agents");
+      setOrgAgents([]);
+    } finally {
+      setOrgAgentsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (session?.connected) {
+      void loadOrgAgents();
+    } else {
+      setOrgAgents([]);
+      setOrgAgentsError(null);
+    }
+  }, [session?.connected, loadOrgAgents]);
+
+  /** Which org row matches the current Developer Name (the key deploy uses to upsert AI_Agent__c). */
+  const matchedOrgAgentId = useMemo(() => {
+    const dev = agentDeveloperName.trim();
+    if (!dev) return "";
+    return orgAgents.find((a) => a.developerName === dev)?.id ?? "";
+  }, [agentDeveloperName, orgAgents]);
 
   function onAgentTargetChange(mode: "new" | "existing") {
     setAgentTargetMode(mode);
@@ -222,6 +272,8 @@ export default function GeneratePage() {
       intentDeployMode,
       intentSyncDeleteOrgWhenBundleEmpty:
         intentSyncDeleteOrgWhenBundleEmpty === true ? true : undefined,
+      skipIntents: skipIntents === true ? true : undefined,
+      skillArtifactsOnly: skillArtifactsOnly === true ? true : undefined,
       streamDeploy: true,
       intentResearchInstructions: intentResearchInstructions.trim() || undefined,
     };
@@ -335,6 +387,8 @@ export default function GeneratePage() {
           removeSkillsNotInBundle: removeSkillsNotInBundle === true,
           intentDeployMode,
           intentSyncDeleteOrgWhenBundleEmpty: intentSyncDeleteOrgWhenBundleEmpty === true,
+          skipIntents: skipIntents === true,
+          skillArtifactsOnly: skillArtifactsOnly === true,
           stream: true,
         }),
       });
@@ -403,6 +457,8 @@ export default function GeneratePage() {
           deployErrorText,
           retryNotes: retryNotes || undefined,
           openaiModel: openaiModel.trim() || undefined,
+          skipIntents: skipIntents === true ? true : undefined,
+          skillArtifactsOnly: skillArtifactsOnly === true ? true : undefined,
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -501,9 +557,11 @@ export default function GeneratePage() {
     : null;
 
   const accordionSummaries = useMemo(() => {
-    const deploySummary = `${agentTargetMode === "new" ? "New agent" : "Update existing"} · merge ${
-      mergeExistingHandler ? "on" : "off"
-    } · intents ${intentDeployMode}`;
+    const deploySummary = `${skillArtifactsOnly ? "skill artifacts only · " : ""}${
+      agentTargetMode === "new" ? "New agent" : "Update existing"
+    } · merge ${mergeExistingHandler ? "on" : "off"} · ${
+      skipIntents ? "no intents" : `intents ${intentDeployMode}`
+    }`;
     const ucLen = useCase.trim().length;
     const hasStructured = intentResearchInstructions.trim().length > 0;
     const briefSummary =
@@ -521,6 +579,8 @@ export default function GeneratePage() {
   }, [
     agentTargetMode,
     mergeExistingHandler,
+    skillArtifactsOnly,
+    skipIntents,
     intentDeployMode,
     useCase,
     intentResearchInstructions,
@@ -554,6 +614,13 @@ export default function GeneratePage() {
               <span className="text-neutral-300">Handler class</span>, and{" "}
               <span className="text-neutral-300">External Id prefix</span> as in Salesforce when you want to{" "}
               <strong className="text-white">update</strong> that agent; new values create a different agent.
+            </p>
+            <p>
+              <strong className="text-white">Display name vs developer name:</strong> Salesforce stores the technical
+              id in <strong className="text-white">Agent Developer Name</strong>. The friendly{" "}
+              <strong className="text-white">Agent name</strong> is only a label — you can have two agents both called
+              &quot;Master Agent&quot; if their Developer Names differ; deploy always targets the row that matches
+              Developer Name.
             </p>
             <p>
               <strong className="text-white">Skills &amp; prompts:</strong> Each prompt upserts by{" "}
@@ -716,7 +783,7 @@ export default function GeneratePage() {
                 </>
               ) : (
                 <>
-                  <strong className="text-cyan-200/95">Update:</strong> use the same Developer Name, Handler &amp; External Id prefix as in Salesforce; merge defaults on.
+                  <strong className="text-cyan-200/95">Update:</strong> pick the agent under &quot;Agents in this org&quot; (identifiers section) or paste the same Developer Name, handler, and External Id prefix; merge defaults on.
                 </>
               )}
             </div>
@@ -754,28 +821,79 @@ export default function GeneratePage() {
                   <input
                     type="checkbox"
                     checked={removeSkillsNotInBundle}
+                    disabled={skillArtifactsOnly}
                     onChange={(e) => setRemoveSkillsNotInBundle(e.target.checked)}
-                    className="mt-0.5 rounded border-[var(--border)] shrink-0"
+                    className="mt-0.5 rounded border-[var(--border)] shrink-0 disabled:opacity-40"
                   />
                   <span className="text-xs leading-snug">
                     <span className="font-medium text-white">Sync skills to bundle</span>
-                    <span className="text-[var(--muted)]"> — remove org prompts/skills not in bundle</span>
+                    <span className="text-[var(--muted)]">
+                      {" "}
+                      — remove org prompts/skills not in bundle (N/A for skill-artifacts-only deploy)
+                    </span>
                   </span>
                 </label>
               </div>
               <div className="space-y-2 min-w-0 lg:border-l lg:border-[var(--border)] lg:pl-6">
+                <label className="flex items-start gap-2 rounded border border-cyan-900/40 bg-cyan-950/20 px-2 py-1.5 text-[11px] text-cyan-100/95 cursor-pointer mb-1">
+                  <input
+                    type="checkbox"
+                    checked={skillArtifactsOnly}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setSkillArtifactsOnly(on);
+                      if (on) {
+                        setSkipIntents(true);
+                        setIntentSyncDeleteOrgWhenBundleEmpty(false);
+                      }
+                    }}
+                    className="mt-0.5 rounded border-[var(--border)] shrink-0"
+                  />
+                  <span>
+                    <span className="font-medium text-white">Skill artifacts only</span>
+                    <span className="block text-[var(--muted)] mt-0.5 leading-snug">
+                      Generate <strong className="text-white">AI_Prompt__c</strong> JSON + Apex handler only. Deploy
+                      upserts and activates prompts; does <strong className="text-white">not</strong> create or update{" "}
+                      <code className="text-cyan-200/80">AI_Agent__c</code> /{" "}
+                      <code className="text-cyan-200/80">AI_Agent_Skill__c</code>. Link prompts to your agent in
+                      Salesforce manually.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 rounded border border-violet-900/40 bg-violet-950/20 px-2 py-1.5 text-[11px] text-violet-100/95 cursor-pointer mb-1">
+                  <input
+                    type="checkbox"
+                    checked={skipIntents}
+                    disabled={skillArtifactsOnly}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setSkipIntents(on);
+                      if (on) setIntentSyncDeleteOrgWhenBundleEmpty(false);
+                    }}
+                    className="mt-0.5 rounded border-[var(--border)] shrink-0 disabled:opacity-45"
+                  />
+                  <span>
+                    <span className="font-medium text-white">Skip intents</span>
+                    <span className="block text-[var(--muted)] mt-0.5 leading-snug">
+                      Skills-only agent: generation omits intent plans; deploy does not describe or deploy{" "}
+                      <code className="text-cyan-200/80">AI_Agent_Intent__c</code> / actions / details (org
+                      need not have those objects). Required when skill artifacts only is on.
+                    </span>
+                  </span>
+                </label>
                 <label htmlFor="intent-deploy-mode" className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)] block">
                   Intents in org
                 </label>
                 <select
                   id="intent-deploy-mode"
                   value={intentDeployMode}
+                  disabled={skipIntents}
                   onChange={(e) => {
                     const v = e.target.value as "create_only" | "upsert" | "sync";
                     setIntentDeployMode(v);
                     if (v !== "sync") setIntentSyncDeleteOrgWhenBundleEmpty(false);
                   }}
-                  className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                  className="w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:opacity-45 disabled:cursor-not-allowed"
                 >
                   <option value="upsert">Upsert — update or create; replace actions</option>
                   <option value="create_only">Create only — skip existing intents</option>
@@ -871,18 +989,80 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
           onToggle={() => toggleAccordion("ids")}
         >
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {session?.connected ? (
+              <div className="sm:col-span-2 xl:col-span-3 space-y-1.5 rounded-lg border border-cyan-900/35 bg-cyan-950/15 px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-xs font-medium text-cyan-100/90">
+                    Agents in this org (pick to set identifiers)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void loadOrgAgents()}
+                    disabled={orgAgentsLoading}
+                    className="text-[11px] px-2 py-1 rounded border border-cyan-800/50 text-cyan-100/90 hover:bg-cyan-950/50 disabled:opacity-50"
+                  >
+                    {orgAgentsLoading ? "Loading…" : "Refresh list"}
+                  </button>
+                </div>
+                <select
+                  value={matchedOrgAgentId}
+                  onChange={(e) => {
+                    const row = orgAgents.find((a) => a.id === e.target.value);
+                    if (row) {
+                      setAgentName(row.name);
+                      setAgentDeveloperName(row.developerName);
+                    }
+                  }}
+                  disabled={orgAgentsLoading}
+                  className="w-full max-w-xl rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-600 disabled:opacity-60"
+                >
+                  <option value="">
+                    {orgAgentsLoading ? "Loading agents…" : "— Choose an agent (or type Developer Name below) —"}
+                  </option>
+                  {orgAgents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} · {a.developerName}
+                    </option>
+                  ))}
+                </select>
+                {orgAgentsError ? (
+                  <p className="text-[11px] text-amber-200/90">{orgAgentsError}</p>
+                ) : null}
+                {!orgAgentsLoading && !orgAgentsError && orgAgents.length === 0 ? (
+                  <p className="text-[11px] text-[var(--muted)]">
+                    No AI_Agent__c records found, or GPTfy objects are not visible with this connection.
+                  </p>
+                ) : null}
+                <p className="text-[11px] text-[var(--muted)] leading-snug">
+                  Works for <strong className="text-white/85">any</strong> agent in the org: the deploy step
+                  upserts by Developer Name — choosing a row here sets that key and the display name so you
+                  don&apos;t create a duplicate by mistake.
+                </p>
+              </div>
+            ) : (
+              <p className="sm:col-span-2 xl:col-span-3 text-[11px] text-[var(--muted)] leading-snug">
+                Connect Salesforce on the status page to list agents here and pick one to target for deploy.
+              </p>
+            )}
             <Field
               label="Agent name"
               value={agentName}
               onChange={setAgentName}
               placeholder="My Support Agent"
             />
-            <Field
-              label="Agent Developer Name"
-              value={agentDeveloperName}
-              onChange={setAgentDeveloperName}
-              placeholder="My_Support_Agent"
-            />
+            <div className="sm:col-span-2 xl:col-span-1 space-y-1">
+              <Field
+                label="Agent Developer Name"
+                value={agentDeveloperName}
+                onChange={setAgentDeveloperName}
+                placeholder="My_Support_Agent"
+              />
+              <p className="text-[11px] text-[var(--muted)] leading-snug">
+                Deploy matches <code className="text-cyan-200/90">AI_Agent__c</code> by this field (not the label
+                alone). When connected, use <strong className="text-white/90">Agents in this org</strong> above to
+                fill both name and Developer Name for the record you want to update.
+              </p>
+            </div>
             <Field
               label="Handler class"
               value={handlerClass}

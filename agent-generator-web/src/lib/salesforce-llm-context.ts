@@ -16,6 +16,8 @@ SALESFORCE-FIRST PLATFORM RULES (read before writing SOQL, DML, or any object gr
 - **Custom fields (__c):** Only use when the use case or user explicitly requires them; otherwise prefer standard fields so deploy succeeds in more orgs.
 - **CRUD:** Check **Schema.sObjectType.X.isAccessible()** / **isCreateable()** / **isUpdateable()** before SOQL/DML where appropriate; handler class should be **with sharing** unless the use case demands otherwise.
 - **Ids:** Treat Ids as opaque 15/18-char strings; validate **String.isBlank** before use; never fabricate Ids in tool responses.
+- **Deploy / same agent record:** GPTfy **AI_Agent__c** is matched by **Agent Developer Name** (API developer name), not the display **Name**. Reusing the exact same Developer Name (and typically the same handler class + external id prefix) **updates** that agent; a different Developer Name creates a **new** agent even if the label is also "Master Agent". The connected-org UI lists agents so users can pick the correct row for **any** scenario — not a one-off for a single named agent.
+- **Find by name:** For Account, Contact, Case, Lead, Opportunity, agents should expose **find_{Object}_by_Name** (SOQL search) so users are not forced to supply raw record Ids when they only know a name; follow-on tools use Ids from the find result.
 `.trim();
 
 /** Block inserted into the model system prompt so rules are always visible next to user research. */

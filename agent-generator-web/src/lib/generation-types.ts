@@ -47,6 +47,16 @@ export const generateRequestSchema = z.object({
    * Default false (safe — no mass delete when bundle is empty).
    */
   intentSyncDeleteOrgWhenBundleEmpty: z.boolean().optional(),
+  /**
+   * When true: generation omits intent plans; deploy skips AI_Agent_Intent__c / action / detail
+   * (no describe of intent objects — org need not have those objects available).
+   */
+  skipIntents: z.boolean().optional(),
+  /**
+   * When true: generate only handler Apex + AI_Prompt__c JSON; deploy compiles handler and upserts prompts
+   * but does not create/update AI_Agent__c or AI_Agent_Skill__c — attach prompts to an agent manually in GPTfy.
+   */
+  skillArtifactsOnly: z.boolean().optional(),
   /** When true, POST /api/pipeline/run returns NDJSON with live deploy steps + final complete event. */
   streamDeploy: z.boolean().optional(),
 });

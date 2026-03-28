@@ -13,6 +13,8 @@ const retryFixSchema = z.object({
   deployErrorText: z.string().min(3),
   retryNotes: z.string().optional(),
   openaiModel: z.string().regex(/^[A-Za-z0-9._:-]{2,80}$/).optional(),
+  skipIntents: z.boolean().optional(),
+  skillArtifactsOnly: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -56,6 +58,8 @@ export async function POST(request: Request) {
       deployErrorText: p.deployErrorText,
       retryNotes: p.retryNotes,
       intentResearchInstructions: p.intentResearchInstructions,
+      skipIntents: p.skipIntents === true,
+      skillArtifactsOnly: p.skillArtifactsOnly === true,
     }
   );
 

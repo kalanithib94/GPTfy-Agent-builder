@@ -34,6 +34,8 @@ export async function buildBundleForPipeline(
       {
         modelOverride: p.openaiModel,
         intentResearchInstructions: p.intentResearchInstructions,
+        skipIntents: p.skipIntents === true,
+        skillArtifactsOnly: p.skillArtifactsOnly === true,
       }
     );
     if (ai.ok) {
@@ -51,6 +53,10 @@ export async function buildBundleForPipeline(
     bundle = buildTemplateBundle(params, p.useCase, p.notes, {
       gptfyNamespace: orgContext.gptfyNamespace,
     });
+  }
+
+  if (p.skipIntents === true || p.skillArtifactsOnly === true) {
+    bundle.intentDeployPlan = [];
   }
 
   return { bundle, warnings, openaiConfigured: Boolean(openaiKey) };

@@ -35,6 +35,8 @@ export type OrgDeployResult = {
  * - removeSkillsNotInBundle: drop org skills not in bundle; delete orphan AI_Prompt__c rows.
  * - intentDeployMode: create_only (skip existing), upsert (update + replace actions), sync (delete intents not in bundle).
  * - intentSyncDeleteOrgWhenBundleEmpty: when sync + empty intentDeployPlan, delete all org intents for this agent (default false = skip).
+ * - skipIntents: do not describe or deploy intent/action/detail rows (skills-only agent).
+ * - skillArtifactsOnly: deploy Apex + AI_Prompt__c only; no AI_Agent__c or AI_Agent_Skill__c.
  */
 export type DeployBundleOptions = {
   mergeExistingHandler?: boolean;
@@ -46,6 +48,10 @@ export type DeployBundleOptions = {
    * for this agent in the org (full wipe). If false (default), skip deletion and record a deploy step.
    */
   intentSyncDeleteOrgWhenBundleEmpty?: boolean;
+  /** Skip all intent metadata (no AI_Agent_Intent__c describe or DML). */
+  skipIntents?: boolean;
+  /** Prompt + handler only: no agent record or skill junction deploy. */
+  skillArtifactsOnly?: boolean;
   /** Called after each deploy step (for streaming UI). */
   onDeployStep?: (step: DeployStep) => void;
   /** Called when a non-fatal error line is recorded (same as final `errors` array). */
@@ -619,8 +625,11 @@ export async function deployBundleToConnectedOrg(
   let deployAgentMeta: { deployedAgentId: string; agentObjectApiName: string } | undefined;
 
   try {
+    const skillOnly = options?.skillArtifactsOnly === true;
+    const skipIntents = options?.skipIntents === true || skillOnly;
     const plans: IntentDeployPlan[] =
-      bundle.intentDeployPlan?.length ?
+      skipIntents ? []
+      : bundle.intentDeployPlan?.length ?
         bundle.intentDeployPlan
       : defaultIntentDeployPlan(
           bundle.parameters.agentDeveloperName,
@@ -632,20 +641,33 @@ export async function deployBundleToConnectedOrg(
     const connApi = await resolveApiName(instanceUrl, token, "AI_Connection__c");
     const mapApi = await resolveApiName(instanceUrl, token, "AI_Data_Extraction_Mapping__c");
     const skillApi = await resolveApiName(instanceUrl, token, "AI_Agent_Skill__c");
-    const intentApi = await resolveApiName(instanceUrl, token, "AI_Agent_Intent__c");
-    const actionApi = await resolveApiName(instanceUrl, token, "AI_Intent_Action__c");
-    const detailApi = await resolveApiName(instanceUrl, token, "AI_Intent_Action_Detail__c");
 
     const pDesc = await describeSObject(instanceUrl, token, API_VER, promptApi);
     const aDesc = await describeSObject(instanceUrl, token, API_VER, agentApi);
     const cDesc = await describeSObject(instanceUrl, token, API_VER, connApi);
     const skDesc = await describeSObject(instanceUrl, token, API_VER, skillApi);
-    const iDesc = await describeSObject(instanceUrl, token, API_VER, intentApi);
-    const actDesc = await describeSObject(instanceUrl, token, API_VER, actionApi);
-    const dDesc = await describeSObject(instanceUrl, token, API_VER, detailApi);
 
-    if (!pDesc.ok || !aDesc.ok || !cDesc.ok || !skDesc.ok || !iDesc.ok || !actDesc.ok || !dDesc.ok) {
+    let intentApi = "";
+    let actionApi = "";
+    let detailApi = "";
+    let iDesc: Awaited<ReturnType<typeof describeSObject>> | null = null;
+    let actDesc: Awaited<ReturnType<typeof describeSObject>> | null = null;
+    let dDesc: Awaited<ReturnType<typeof describeSObject>> | null = null;
+
+    if (!skipIntents) {
+      intentApi = await resolveApiName(instanceUrl, token, "AI_Agent_Intent__c");
+      actionApi = await resolveApiName(instanceUrl, token, "AI_Intent_Action__c");
+      detailApi = await resolveApiName(instanceUrl, token, "AI_Intent_Action_Detail__c");
+      iDesc = await describeSObject(instanceUrl, token, API_VER, intentApi);
+      actDesc = await describeSObject(instanceUrl, token, API_VER, actionApi);
+      dDesc = await describeSObject(instanceUrl, token, API_VER, detailApi);
+    }
+
+    if (!pDesc.ok || !aDesc.ok || !cDesc.ok || !skDesc.ok) {
       throw new Error("Describe failed for one or more GPTfy objects");
+    }
+    if (!skipIntents && (!iDesc?.ok || !actDesc?.ok || !dDesc?.ok)) {
+      throw new Error("Describe failed for one or more GPTfy intent objects");
     }
 
     const pf = pDesc.body.fields;
@@ -657,9 +679,6 @@ export async function deployBundleToConnectedOrg(
       throw new Error("Could not resolve AI_Agent_Skill__c lookup fields");
     }
     const af = aDesc.body.fields;
-    const intf = iDesc.body.fields;
-    const actf = actDesc.body.fields;
-    const dtf = dDesc.body.fields;
 
     const fExt = pickField(pf, "External_Id__c");
     const fCmd = pickField(pf, "Prompt_Command__c");
@@ -676,42 +695,73 @@ export async function deployBundleToConnectedOrg(
     const fDesc = pickField(af, "Description__c");
     const fAgStat = pickField(af, "Status__c");
 
-    const fIntAgent = pickField(intf, "AI_Agent__c");
-    const fIntSeq = pickField(intf, "Sequence__c") ?? pickField(intf, "Seq__c");
-    const fIntActive = pickField(intf, "Is_Active__c");
-    const fIntDesc = pickField(intf, "Description__c");
-
-    const fActIntent = pickFieldAny(actf, ["AI_Agent_Intent__c", "Intent__c"]);
-    const fActSeq = pickField(actf, "Sequence__c") ?? pickField(actf, "Seq__c");
-    const fActType = pickField(actf, "Action_Type__c");
-    const fActDesc = pickFieldAny(actf, ["Description__c", "Action_Description__c"]);
-    const fActActive = pickFieldAny(actf, ["Is_Active__c", "Active__c"]);
-    const fLang = pickField(actf, "Language__c");
-    const fCanned = pickFieldAny(actf, [
-      "Canned_Response_Text__c",
-      "Canned_Response__c",
-      "Response_Text__c",
-    ]);
-    const fObj = pickFieldAny(actf, ["Object_API_Name__c", "Object_Name__c", "Object__c"]);
-    const fFlow = pickFieldAny(actf, ["Flow_API_Name__c", "Flow_Name__c", "Flow__c"]);
-    const fApex = pickFieldAny(actf, ["Apex_Class_Name__c", "Apex_Class__c"]);
-    const fApexRet = pickFieldAny(actf, ["Apex_Return_Type__c", "Return_Type__c"]);
-    const actionTypePicklist = picklistValuesBySuffix(actf, "Action_Type__c");
-    const languagePicklist = picklistValuesBySuffix(actf, "Language__c");
-    const apexReturnPicklist = picklistValuesBySuffix(actf, "Apex_Return_Type__c");
+    let fIntAgent: string | null = null;
+    let fIntSeq: string | null = null;
+    let fIntActive: string | null = null;
+    let fIntDesc: string | null = null;
+    let fActIntent: string | null = null;
+    let fActSeq: string | null = null;
+    let fActType: string | null = null;
+    let fActDesc: string | null = null;
+    let fActActive: string | null = null;
+    let fLang: string | null = null;
+    let fCanned: string | null = null;
+    let fObj: string | null = null;
+    let fFlow: string | null = null;
+    let fApex: string | null = null;
+    let fApexRet: string | null = null;
+    let actionTypePicklist: string[] = [];
+    let languagePicklist: string[] = [];
+    let apexReturnPicklist: string[] = [];
     const objectDescribeCache = new Map<string, DescribeField[]>();
+    let fDetAct: string | null = null;
+    let fDetField: string | null = null;
+    let fDetType: string | null = null;
+    let fDetVal: string | null = null;
+    let fDetActive: string | null = null;
+    let detailTypePicklist: string[] = [];
 
-    const fDetAct = pickFieldAny(dtf, ["AI_Intent_Action__c", "Intent_Action__c"]);
-    const fDetField = pickFieldAny(dtf, ["Field_API_Name__c", "Field_Name__c"]);
-    const fDetType = pickField(dtf, "Type__c");
-    const fDetVal = pickFieldAny(dtf, [
-      "Hardcoded_Value_Or_AI_Instruction__c",
-      "Value_Or_AI_Instruction__c",
-      "Value__c",
-      "AI_Description__c",
-    ]);
-    const fDetActive = pickField(dtf, "Is_Active__c");
-    const detailTypePicklist = picklistValuesBySuffix(dtf, "Type__c");
+    if (!skipIntents && iDesc?.ok && actDesc?.ok && dDesc?.ok) {
+      const intf = iDesc.body.fields;
+      const actf = actDesc.body.fields;
+      const dtf = dDesc.body.fields;
+
+      fIntAgent = pickField(intf, "AI_Agent__c");
+      fIntSeq = pickField(intf, "Sequence__c") ?? pickField(intf, "Seq__c");
+      fIntActive = pickField(intf, "Is_Active__c");
+      fIntDesc = pickField(intf, "Description__c");
+
+      fActIntent = pickFieldAny(actf, ["AI_Agent_Intent__c", "Intent__c"]);
+      fActSeq = pickField(actf, "Sequence__c") ?? pickField(actf, "Seq__c");
+      fActType = pickField(actf, "Action_Type__c");
+      fActDesc = pickFieldAny(actf, ["Description__c", "Action_Description__c"]);
+      fActActive = pickFieldAny(actf, ["Is_Active__c", "Active__c"]);
+      fLang = pickField(actf, "Language__c");
+      fCanned = pickFieldAny(actf, [
+        "Canned_Response_Text__c",
+        "Canned_Response__c",
+        "Response_Text__c",
+      ]);
+      fObj = pickFieldAny(actf, ["Object_API_Name__c", "Object_Name__c", "Object__c"]);
+      fFlow = pickFieldAny(actf, ["Flow_API_Name__c", "Flow_Name__c", "Flow__c"]);
+      fApex = pickFieldAny(actf, ["Apex_Class_Name__c", "Apex_Class__c"]);
+      fApexRet = pickFieldAny(actf, ["Apex_Return_Type__c", "Return_Type__c"]);
+      actionTypePicklist = picklistValuesBySuffix(actf, "Action_Type__c");
+      languagePicklist = picklistValuesBySuffix(actf, "Language__c");
+      apexReturnPicklist = picklistValuesBySuffix(actf, "Apex_Return_Type__c");
+
+      fDetAct = pickFieldAny(dtf, ["AI_Intent_Action__c", "Intent_Action__c"]);
+      fDetField = pickFieldAny(dtf, ["Field_API_Name__c", "Field_Name__c"]);
+      fDetType = pickField(dtf, "Type__c");
+      fDetVal = pickFieldAny(dtf, [
+        "Hardcoded_Value_Or_AI_Instruction__c",
+        "Value_Or_AI_Instruction__c",
+        "Value__c",
+        "AI_Description__c",
+      ]);
+      fDetActive = pickField(dtf, "Is_Active__c");
+      detailTypePicklist = picklistValuesBySuffix(dtf, "Type__c");
+    }
 
     const requiredPrompt = [fExt, fCmd, fClass, fConn, fMap, fType, fStat];
     if (requiredPrompt.some((x) => !x)) {
@@ -913,26 +963,28 @@ export async function deployBundleToConnectedOrg(
     }
 
     let agentModelId: string | null = null;
-    const pref = bundle.parameters.agentModelConnectionName;
-    let rows = await runQuery(
-      instanceUrl,
-      token,
-      `SELECT Id FROM ${connApi} WHERE ${fConnType} = 'Agentic' AND Name = '${soqlEscape(pref)}' LIMIT 1`
-    );
-    if (rows[0]?.Id) agentModelId = String(rows[0].Id);
-    if (!agentModelId) {
-      rows = await runQuery(
+    if (!skillOnly) {
+      const pref = bundle.parameters.agentModelConnectionName;
+      let rows = await runQuery(
         instanceUrl,
         token,
-        `SELECT Id FROM ${connApi} WHERE ${fConnType} = 'Agentic' ORDER BY LastModifiedDate DESC LIMIT 1`
+        `SELECT Id FROM ${connApi} WHERE ${fConnType} = 'Agentic' AND Name = '${soqlEscape(pref)}' LIMIT 1`
       );
       if (rows[0]?.Id) agentModelId = String(rows[0].Id);
-    }
-    if (!agentModelId) {
-      throw new Error("No AI_Connection__c with Type__c = Agentic for AI_Model__c");
+      if (!agentModelId) {
+        rows = await runQuery(
+          instanceUrl,
+          token,
+          `SELECT Id FROM ${connApi} WHERE ${fConnType} = 'Agentic' ORDER BY LastModifiedDate DESC LIMIT 1`
+        );
+        if (rows[0]?.Id) agentModelId = String(rows[0].Id);
+      }
+      if (!agentModelId) {
+        throw new Error("No AI_Connection__c with Type__c = Agentic for AI_Model__c");
+      }
     }
 
-    rows = await runQuery(
+    let rows = await runQuery(
       instanceUrl,
       token,
       `SELECT Id FROM ${mapApi} WHERE Name = '${soqlEscape(bundle.parameters.dataMappingName)}' LIMIT 1`
@@ -985,7 +1037,7 @@ export async function deployBundleToConnectedOrg(
     const bundleStemSet = new Set(
       bundle.promptCommands.map((pc) => promptStemFromFileName(pc.fileName)).filter(Boolean)
     );
-    if (options?.removeSkillsNotInBundle === true && fClass) {
+    if (options?.removeSkillsNotInBundle === true && fClass && !skillOnly) {
       const orphanPrompts = await runQuery(
         instanceUrl,
         token,
@@ -1033,83 +1085,100 @@ export async function deployBundleToConnectedOrg(
       );
     }
 
-    const devName = bundle.parameters.agentDeveloperName;
-    let agentRows = await runQuery(
-      instanceUrl,
-      token,
-      `SELECT Id FROM ${agentApi} WHERE ${fDev!} = '${soqlEscape(devName)}' LIMIT 1`
-    );
-    let agentId: string;
-    if (agentRows[0]?.Id) {
-      agentId = String(agentRows[0].Id);
-      const patchBody: Record<string, unknown> = {
-        [fModel!]: agentModelId,
-        [fSys!]: bundle.agentSystemPrompt,
-        [fDesc!]: bundle.agentDescription,
-        [fAgStat!]: "Draft",
-      };
-      const pr = await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
-        method: "PATCH",
-        body: JSON.stringify(patchBody),
-      });
-      if (!pr.ok) throw new Error(`Agent update failed: ${pr.text.slice(0, 300)}`);
-    } else {
-      const insertBody: Record<string, unknown> = {
-        Name: bundle.parameters.agentName,
-        [fDev!]: devName,
-        [fModel!]: agentModelId,
-        [fSys!]: bundle.agentSystemPrompt,
-        [fDesc!]: bundle.agentDescription,
-        [fAgStat!]: "Draft",
-      };
-      const ir = await fetchWithRefresh(`sobjects/${agentApi}`, {
-        method: "POST",
-        body: JSON.stringify(insertBody),
-      });
-      if (!ir.ok) throw new Error(`Agent insert failed: ${ir.text.slice(0, 400)}`);
-      const id = (ir.json as { id?: string })?.id;
-      if (!id) throw new Error("Agent insert returned no id");
-      agentId = id;
-    }
-    addStep("Upsert AI_Agent__c", true, agentId);
-
-    deployAgentMeta = { deployedAgentId: agentId, agentObjectApiName: agentApi };
-
-    const inPrompts = promptIds.map((id) => `'${soqlEscape(id)}'`).join(",");
-    const skillDel = await runQuery(
-      instanceUrl,
-      token,
-      `SELECT Id FROM ${skillApi} WHERE ${skillAgentFld} = '${soqlEscape(agentId)}' AND ${skillPromptFld} IN (${inPrompts})`
-    );
-
-    for (const s of skillDel) {
-      await fetchWithRefresh(`sobjects/${skillApi}/${s.Id}`, { method: "DELETE" });
-    }
-
-    for (const pid of promptIds) {
-      const sb: Record<string, unknown> = {
-        [skillAgentFld!]: agentId,
-        [skillPromptFld!]: pid,
-      };
-      const sr = await fetchWithRefresh(`sobjects/${skillApi}`, {
-        method: "POST",
-        body: JSON.stringify(sb),
-      });
-      if (!sr.ok) {
-        pushErr(`Skill insert failed: ${sr.text.slice(0, 200)}`);
+    let agentId: string | undefined;
+    if (skillOnly) {
+      for (const pr of promptRows) {
+        const pid = String(pr.Id);
+        await fetchWithRefresh(`sobjects/${promptApi}/${pid}`, {
+          method: "PATCH",
+          body: JSON.stringify({ [fStat!]: "Active" }),
+        });
       }
-    }
-    addStep("Rebuild AI_Agent_Skill__c junctions", true, String(promptIds.length));
+      addStep("Activate AI_Prompt__c records", true);
+      addStep(
+        "Skill artifacts only",
+        true,
+        "Handler + AI_Prompt__c deployed. Add these prompts to an agent in GPTfy (link AI_Prompt__c via AI_Agent_Skill__c) — no AI_Agent__c deploy in this mode."
+      );
+    } else {
+      const devName = bundle.parameters.agentDeveloperName;
+      let agentRows = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ${agentApi} WHERE ${fDev!} = '${soqlEscape(devName)}' LIMIT 1`
+      );
+      if (agentRows[0]?.Id) {
+        agentId = String(agentRows[0].Id);
+        const patchBody: Record<string, unknown> = {
+          [fModel!]: agentModelId,
+          [fSys!]: bundle.agentSystemPrompt,
+          [fDesc!]: bundle.agentDescription,
+          [fAgStat!]: "Draft",
+        };
+        const pr = await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
+          method: "PATCH",
+          body: JSON.stringify(patchBody),
+        });
+        if (!pr.ok) throw new Error(`Agent update failed: ${pr.text.slice(0, 300)}`);
+      } else {
+        const insertBody: Record<string, unknown> = {
+          Name: bundle.parameters.agentName,
+          [fDev!]: devName,
+          [fModel!]: agentModelId,
+          [fSys!]: bundle.agentSystemPrompt,
+          [fDesc!]: bundle.agentDescription,
+          [fAgStat!]: "Draft",
+        };
+        const ir = await fetchWithRefresh(`sobjects/${agentApi}`, {
+          method: "POST",
+          body: JSON.stringify(insertBody),
+        });
+        if (!ir.ok) throw new Error(`Agent insert failed: ${ir.text.slice(0, 400)}`);
+        const id = (ir.json as { id?: string })?.id;
+        if (!id) throw new Error("Agent insert returned no id");
+        agentId = id;
+      }
+      addStep("Upsert AI_Agent__c", true, agentId);
 
-    for (const pr of promptRows) {
-      const pid = String(pr.Id);
-      await fetchWithRefresh(`sobjects/${promptApi}/${pid}`, {
-        method: "PATCH",
-        body: JSON.stringify({ [fStat!]: "Active" }),
-      });
-    }
-    addStep("Activate AI_Prompt__c records", true);
+      deployAgentMeta = { deployedAgentId: agentId, agentObjectApiName: agentApi };
 
+      const inPrompts = promptIds.map((id) => `'${soqlEscape(id)}'`).join(",");
+      const skillDel = await runQuery(
+        instanceUrl,
+        token,
+        `SELECT Id FROM ${skillApi} WHERE ${skillAgentFld} = '${soqlEscape(agentId)}' AND ${skillPromptFld} IN (${inPrompts})`
+      );
+
+      for (const s of skillDel) {
+        await fetchWithRefresh(`sobjects/${skillApi}/${s.Id}`, { method: "DELETE" });
+      }
+
+      for (const pid of promptIds) {
+        const sb: Record<string, unknown> = {
+          [skillAgentFld!]: agentId,
+          [skillPromptFld!]: pid,
+        };
+        const sr = await fetchWithRefresh(`sobjects/${skillApi}`, {
+          method: "POST",
+          body: JSON.stringify(sb),
+        });
+        if (!sr.ok) {
+          pushErr(`Skill insert failed: ${sr.text.slice(0, 200)}`);
+        }
+      }
+      addStep("Rebuild AI_Agent_Skill__c junctions", true, String(promptIds.length));
+
+      for (const pr of promptRows) {
+        const pid = String(pr.Id);
+        await fetchWithRefresh(`sobjects/${promptApi}/${pid}`, {
+          method: "PATCH",
+          body: JSON.stringify({ [fStat!]: "Active" }),
+        });
+      }
+      addStep("Activate AI_Prompt__c records", true);
+    }
+
+    if (!skipIntents) {
     // Auto-provision dependencies used by intent actions before creating rows/publishing.
     const referencedApex = new Set<string>();
     const referencedFlows = new Set<string>();
@@ -1413,7 +1482,7 @@ export async function deployBundleToConnectedOrg(
       const existingIntentRows = await runQuery(
         instanceUrl,
         token,
-        `SELECT Id FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId)}' AND Name = '${soqlEscape(plan.name)}' LIMIT 1`
+        `SELECT Id FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId!)}' AND Name = '${soqlEscape(plan.name)}' LIMIT 1`
       );
       const existingIntentId = existingIntentRows[0]?.Id ? String(existingIntentRows[0].Id) : null;
 
@@ -1642,7 +1711,7 @@ export async function deployBundleToConnectedOrg(
         const allIntents = await runQuery(
           instanceUrl,
           token,
-          `SELECT Id, Name FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId)}'`
+          `SELECT Id, Name FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId!)}'`
         );
         for (const row of allIntents) {
           const name = String(row.Name);
@@ -1654,7 +1723,7 @@ export async function deployBundleToConnectedOrg(
         const allIntents = await runQuery(
           instanceUrl,
           token,
-          `SELECT Id, Name FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId)}'`
+          `SELECT Id, Name FROM ${intentApi} WHERE ${fIntAgent!} = '${soqlEscape(agentId!)}'`
         );
         for (const row of allIntents) {
           await deleteIntentCascade(String(row.Id));
@@ -1683,17 +1752,28 @@ export async function deployBundleToConnectedOrg(
         `Skipped ${skippedActionNotes.length} row(s) due to unavailable metadata`
       : undefined
     );
+    } else {
+      addStep(
+        "Intent deploy skipped",
+        true,
+        "skipIntents enabled — no describe/DML for AI_Agent_Intent__c, AI_Intent_Action__c, or AI_Intent_Action_Detail__c"
+      );
+    }
 
     if (errors.length > 0) {
       addStep("Publish AI_Agent__c (Active)", false, "Skipped due to intent/action errors");
       return { ok: false, steps, errors, ...deployAgentMeta };
     }
 
-    await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ [fAgStat!]: "Active" }),
-    });
-    addStep("Publish AI_Agent__c (Active)", true);
+    if (skillOnly) {
+      addStep("Publish AI_Agent__c (Active)", true, "Skipped — skill-artifacts-only deploy (no agent row)");
+    } else if (agentId) {
+      await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ [fAgStat!]: "Active" }),
+      });
+      addStep("Publish AI_Agent__c (Active)", true);
+    }
 
     const ok = errors.length === 0;
     return { ok, steps, errors, ...deployAgentMeta };

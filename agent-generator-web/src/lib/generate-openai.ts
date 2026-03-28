@@ -1,3 +1,5 @@
+import { injectFindByNameSkillsIfMissing } from "./find-by-name-inject";
+import { repairEmptyPromptCommandSchema } from "./prompt-command-schema-repair";
 import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
 import type { GeneratedBundle } from "./generation-types";
 import { getSalesforceFirstPromptBlock } from "./salesforce-llm-context";
@@ -45,7 +47,39 @@ type GenerateWithOpenAIOptions = {
   retryNotes?: string;
   /** User-authored research: skills/intents to add or update, business rules — injected into prompts. */
   intentResearchInstructions?: string;
+  /** When true: empty intentDeployPlan; deploy skips intent objects. */
+  skipIntents?: boolean;
+  /** When true: generate only handler + promptCommands for manual attachment to an agent. */
+  skillArtifactsOnly?: boolean;
 };
+
+function buildSkillArtifactsOnlySystemPrompt(
+  params: GeneratedBundle["parameters"],
+  agenticInterface: string,
+  salesforceBlock: string,
+  research: string | undefined
+): string {
+  const r = research?.trim()
+    ? `\nAUTHORITATIVE DETAIL (skills / handler — no full agent):\n${research}\n`
+    : "";
+  return `You are an expert Salesforce Apex developer for GPTfy-style **agentic handler** classes.
+
+MODE: **SKILL ARTIFACTS ONLY** — The user will **not** deploy a full AI_Agent__c row. They need:
+1) **handlerApex** — global with sharing class ${params.handlerClass} implements ${agenticInterface}; global String executeMethod(String requestParam, Map<String, Object> parameters); switch on requestParam with when branches for each skill; private String err(String) and ok(Map) helpers; private String helper methods per skill. Follow Apex switch on/when (not Java case:).
+2) **promptCommands** — array of { fileName, content } where fileName is like \`{${params.agentDeveloperName}_YourStem}_PromptCommand.json\` and content is pretty-printed JSON Schema for that skill's parameters. Never use empty "properties": {}.
+
+Also return (placeholders allowed if brief):
+- **agentDescription**: one line, e.g. "Skill pack — attach to an existing GPTfy agent"
+- **agentSystemPrompt**: at least 500 characters: explain these tools will be wired to an existing agent by an admin; include tool usage, safety, and error handling; no full product persona required
+- **intentsConfigMd**: "## Intents\\n\\nNot used for skill-artifacts-only bundles.\\n"
+- **intentDeployPlan**: []
+- **specMarkdown** (optional): short note that deploy can upsert AI_Prompt__c + Apex only; link prompts to an agent in the GPTfy UI
+
+${salesforceBlock}
+${r}
+
+Return ONLY valid JSON (no markdown) with keys: handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan.`;
+}
 
 type IntentPlanItem = NonNullable<z.infer<typeof llmShape>["intentDeployPlan"]>[number];
 
@@ -200,6 +234,7 @@ TOOL USAGE RULES (MANDATORY):
 - For ANY Salesforce read/write operation, call the appropriate tool first.
 - Never claim success unless tool JSON includes success=true.
 - If a required parameter is missing, ask one focused follow-up question.
+- When the user refers to a person, company, case, or deal by **name** (not a Salesforce Id), call the matching **find_*_by_Name** tool first, pick or confirm the record from the results, then run update/create skills using the Id from tool output — **do not** ask the user to paste a 15–18 character Id unless search truly fails or multiple matches need disambiguation.
 - Available skills in this build: ${skills}
 
 SAFETY AND DATA INTEGRITY:
@@ -298,6 +333,147 @@ function intentActionClassNameFromHandler(handlerClass: string, seed = "IntentAc
   if (!/^[A-Za-z]/.test(s)) s = `A${s}`;
   if (s.length > 40) s = s.slice(0, 40);
   return s;
+}
+
+/** Use case mentions Case + (comment | frustration | sentiment) — drive Case/CaseComment intents, not Opportunity/Task. */
+function combinedUseCaseBlob(
+  useCase: string,
+  research?: string | null
+): string {
+  return `${useCase}\n${research ?? ""}`;
+}
+
+function impliesCaseCommentWorkflow(text: string): boolean {
+  const t = text.toLowerCase();
+  if (!/\bcase\b/.test(t) && !/\bcases\b/.test(t)) return false;
+  return (
+    /\bcomment\b/.test(t) ||
+    /\bfrustrat/.test(t) ||
+    /\bsentiment\b/.test(t) ||
+    (/\battach\b/.test(t) && /\b(case|comment)\b/.test(t)) ||
+    /\bcase\s+comment\b/.test(t)
+  );
+}
+
+function planHasCaseCommentCreateAction(
+  plan: IntentPlanItem[] | undefined
+): boolean {
+  if (!plan?.length) return false;
+  for (const intent of plan) {
+    for (const a of intent.actions) {
+      if (lowerActionType(a.actionType) !== "create record") continue;
+      if ((a.objectApiName ?? "").toLowerCase() === "casecomment") return true;
+    }
+  }
+  return false;
+}
+
+/** When LLM or collision repair would use generic Task/Opp — prefer Case + CaseComment for case-centric use cases. */
+function buildCaseCentricProactiveIntent(
+  idx: number,
+  sequence: number | undefined,
+  _apexClass: string
+): IntentPlanItem {
+  return {
+    name: `case_sentiment_and_comment_${idx}`,
+    sequence,
+    isActive: true,
+    description:
+      "Trigger when the customer shows frustration, urgency, or negative sentiment about a Case. Update Case fields as needed and log their message as a CaseComment on that Case (ParentId = Case Id, CommentBody = customer text).",
+    actions: [
+      {
+        seq: 1,
+        actionType: "Update Field",
+        objectApiName: "Case",
+        details: [
+          {
+            fieldApiName: "Status",
+            type: "AI Extracted",
+            valueOrInstruction:
+              "Map the conversation to a valid Case Status for this org when an update is appropriate.",
+          },
+          {
+            fieldApiName: "Priority",
+            type: "AI Extracted",
+            valueOrInstruction:
+              "Raise priority when frustration or escalation is indicated (e.g. High).",
+          },
+        ],
+      },
+      {
+        seq: 2,
+        actionType: "Create Record",
+        objectApiName: "CaseComment",
+        details: [
+          {
+            fieldApiName: "ParentId",
+            type: "AI Extracted",
+            valueOrInstruction:
+              "ONLY the Salesforce Id of the Case this comment belongs to.",
+          },
+          {
+            fieldApiName: "CommentBody",
+            type: "AI Extracted",
+            valueOrInstruction:
+              "The customer's query or message to store as the case comment.",
+          },
+          {
+            fieldApiName: "IsPublished",
+            type: "Hardcoded",
+            valueOrInstruction: "true",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function injectCaseCommentIntentIfMissing(
+  plan: IntentPlanItem[] | undefined,
+  useCase: string,
+  research: string | undefined,
+  agentDeveloperName: string
+): IntentPlanItem[] | undefined {
+  const blob = combinedUseCaseBlob(useCase, research);
+  if (!impliesCaseCommentWorkflow(blob)) return plan;
+  if (planHasCaseCommentCreateAction(plan)) return plan;
+  const next = [...(plan ?? [])];
+  const maxSeq = next.reduce((m, i) => Math.max(m, i.sequence ?? 0), 0);
+  const safe = agentDeveloperName.replace(/[^A-Za-z0-9_]/g, "_") || "Agent";
+  next.push({
+    name: `${safe}_intent_frustrated_customer_case_comment`,
+    sequence: maxSeq + 10,
+    isActive: true,
+    description:
+      "When sentiment is frustrated or the customer’s message must be preserved on the Case: create a CaseComment with their query (CommentBody) linked via ParentId to the Case Id.",
+    actions: [
+      {
+        seq: 1,
+        actionType: "Create Record",
+        objectApiName: "CaseComment",
+        details: [
+          {
+            fieldApiName: "ParentId",
+            type: "AI Extracted",
+            valueOrInstruction:
+              "ONLY the Salesforce Id of the Case to attach this comment to.",
+          },
+          {
+            fieldApiName: "CommentBody",
+            type: "AI Extracted",
+            valueOrInstruction:
+              "The customer’s message or query text to log as the case comment.",
+          },
+          {
+            fieldApiName: "IsPublished",
+            type: "Hardcoded",
+            valueOrInstruction: "true",
+          },
+        ],
+      },
+    ],
+  });
+  return next;
 }
 
 function buildProactiveIntent(
@@ -409,9 +585,15 @@ function buildProactiveIntent(
 function enforceIntentPlanStrictness(
   plan: z.infer<typeof llmShape>["intentDeployPlan"] | undefined,
   skillNames: string[],
-  handlerClass: string
+  handlerClass: string,
+  useCase: string,
+  intentResearchInstructions?: string | undefined
 ): z.infer<typeof llmShape>["intentDeployPlan"] | undefined {
   if (!plan?.length) return plan;
+
+  const caseWorkflow = impliesCaseCommentWorkflow(
+    combinedUseCaseBlob(useCase, intentResearchInstructions)
+  );
 
   const skillKeys = new Set(skillNames.map((s) => normalizeKey(s)).filter(Boolean));
   let proactiveIdx = 1;
@@ -430,11 +612,17 @@ function enforceIntentPlanStrictness(
         handlerClass,
         `${intent.name}_${proactiveIdx}`
       );
-      const replacement = buildProactiveIntent(
-        proactiveIdx++,
-        intent.sequence,
-        actionClass
-      );
+      const replacement = caseWorkflow
+        ? buildCaseCentricProactiveIntent(
+            proactiveIdx++,
+            intent.sequence,
+            actionClass
+          )
+        : buildProactiveIntent(
+            proactiveIdx++,
+            intent.sequence,
+            actionClass
+          );
       return replacement;
     }
 
@@ -491,7 +679,12 @@ function enforceIntentPlanStrictness(
         handlerClass,
         `proactive_${proactiveIdx}`
       );
-      rewritten.push(buildProactiveIntent(proactiveIdx++, 100 + i, actionClass));
+      const useCaseCentric = caseWorkflow && i === 0;
+      rewritten.push(
+        useCaseCentric
+          ? buildCaseCentricProactiveIntent(proactiveIdx++, 100 + i, actionClass)
+          : buildProactiveIntent(proactiveIdx++, 100 + i, actionClass)
+      );
     }
   }
 
@@ -641,28 +834,48 @@ export async function generateWithOpenAI(
     Boolean(options?.previousHandlerApex?.trim()) &&
     Boolean(options?.deployErrorText?.trim());
 
+  const skillArtifactsOnly = options?.skillArtifactsOnly === true;
+  const skipIntents = options?.skipIntents === true || skillArtifactsOnly;
   const research = options?.intentResearchInstructions?.trim();
-  const researchBlock = research
-    ? `\n\nAUTHORITATIVE USER RESEARCH — SKILLS, INTENTS, AND DEPLOY (you MUST reflect this in intentDeployPlan, handlerApex switch branches, and promptCommands; do not ignore):\n${research}\n`
+  const researchBlock =
+    research && !skipIntents ?
+      `\n\nAUTHORITATIVE USER RESEARCH — SKILLS, INTENTS, AND DEPLOY (you MUST reflect this in intentDeployPlan, handlerApex switch branches, and promptCommands; do not ignore):\n${research}\n`
+    : research && skipIntents ?
+      `\n\nAUTHORITATIVE USER RESEARCH — SKILLS AND HANDLER ONLY (intents disabled; apply to promptCommands and handlerApex):\n${research}\n`
     : "";
 
-  const system = `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
+  const skillsOnlyMode =
+    skipIntents && !skillArtifactsOnly ?
+      `MODE: SKILLS ONLY — Return "intentDeployPlan": [] (empty array). In intentsConfigMd, briefly note this agent relies on skills only (no GPTfy intent metadata). Put all behavior in promptCommands + handlerApex + agentSystemPrompt.\n\n`
+    : "";
+
+  const system = skillArtifactsOnly ?
+    buildSkillArtifactsOnlySystemPrompt(
+      params,
+      agenticInterface,
+      getSalesforceFirstPromptBlock(),
+      research
+    )
+  : `You are an expert Salesforce Apex developer for GPTfy-style agentic agents.
 ${getSalesforceFirstPromptBlock()}
-${researchBlock}
+${skillsOnlyMode}${researchBlock}
 Return ONLY valid JSON (no markdown) with keys:
 handlerApex, agentDescription, agentSystemPrompt, intentsConfigMd, promptCommands, specMarkdown (optional), fullConfigStubApex (optional), intentDeployPlan (optional array).
 
-intentDeployPlan: 2–8 intents. Each: name (snake_case), sequence, isActive, description (trigger text), actions[] with seq, actionType (use "Canned Response" for canned), language, cannedText for canned rows.
+${skipIntents ? "intentDeployPlan: must be [].\n\n" : `intentDeployPlan: 2–8 intents. Each: name (snake_case), sequence, isActive, description (trigger text), actions[] with seq, actionType (use "Canned Response" for canned), language, cannedText for canned rows.
 Action mix rules:
 - greeting and out_of_scope can use Canned Response.
 - domain intents MUST include non-canned actions (Create Record / Update Field / Apex / Flow / Invoke Agent) where applicable.
 - avoid "mostly canned" plans; target at least 2 non-canned actions across domain intents.
 - domain intents MUST be proactive (underlying meaning, escalation, retention, exception handling), not duplicates of skill operations.
+- If the use case involves **Case** work plus **frustration/sentiment** and/or **attaching the customer message as a comment**, include a domain intent whose actions include **Create Record** on **CaseComment** with **ParentId** (Case Id) and **CommentBody** (customer text), and optionally **Update Field** on **Case** — do not substitute only Task or Opportunity unless the use case is explicitly about those objects.
 - do NOT create intent names/descriptions that simply mirror skill names like find/update/create task.
 - language field is ONLY for Canned Response actions. Do not include language for Apex/Flow/Create Record/Update Field/Invoke Agent.
 - for Apex actions, prefer apexReturnType "Map".
 - for Create Record / Update Field, ALWAYS include objectApiName and at least one detail row with fieldApiName + type + valueOrInstruction.
 - prefer practical business actions (e.g., create follow-up Task with owner-facing context) over empty meta actions.
+
+`}
 
 handlerApex requirements:
 - global with sharing class ${params.handlerClass} implements ${agenticInterface}
@@ -691,11 +904,13 @@ agentSystemPrompt quality requirements:
 
 promptCommands: array of { "fileName": "my_skill_PromptCommand.json", "content": "<pretty-printed JSON schema string>" }
 - JSON schema: type object, properties with descriptions starting with "ONLY the" where applicable, required array.
+- **Never emit empty properties:** \`properties\` must contain at least one field (e.g. optional \`limit\`, \`searchTerm\`, \`statusFilter\`, \`accountName\`). **Never** return \`"properties": {}\` — GPTfy needs parameters the model can fill.
 - Skill names must be globally unique in org. Prefix every skill name with ${params.agentDeveloperName}_.
 - Avoid generic stems like health_check, create_task, update_record without the agent prefix.
 - In required[], include ONLY truly user-supplied mandatory inputs for that skill.
 - Do NOT include system-managed fields in required[] (especially OwnerId, CreatedById, LastModifiedById, Id).
 - If OwnerId is needed, default server-side or infer context; do not force user to provide it in prompt command.
+- **MANDATORY (name-based workflows):** For every standard object your skills create, update, delete, or link (Account, Contact, Case, Lead, Opportunity when applicable), include a **find_{Object}_by_Name** skill so users can resolve records by name. JSON schema pattern matches find_Account_by_Name in the Salesforce_CRM_Agent reference (name search parameter + optional limit). Implement each with SOQL LIKE (list + isEmpty), return primary* Id fields for follow-on tools. Do not require raw Salesforce Ids in user-facing parameters when a name search can run first.
 
 intentsConfigMd: markdown, include greeting and out_of_scope intents at minimum.
 
@@ -859,15 +1074,36 @@ switch on requestParam {
     }
 
     const d = shape.data;
+    const stemsFromModel = d.promptCommands
+      .map((pc) => promptStemFromFileName(pc.fileName))
+      .filter(Boolean);
+    const findInjected = injectFindByNameSkillsIfMissing({
+      promptCommands: d.promptCommands,
+      handlerApex: d.handlerApex,
+      unstemmedStems: [...stemsFromModel],
+      useCase,
+      intentResearchInstructions: options?.intentResearchInstructions,
+    });
+    const specFindNote =
+      findInjected.injectedObjects.length > 0 ?
+        `\n\n---\n**Auto-added find-by-name skills:** ${findInjected.injectedObjects.join(", ")} — name search before Id-based updates (see \`find_Account_by_Name\` pattern in \`use-cases/Salesforce_CRM_Agent/Account_Intelligence/\`).\n`
+      : "";
+
     const uniquePrompting = ensureOrgUniquePromptCommands(
-      d.promptCommands,
+      findInjected.promptCommands,
       params.agentDeveloperName
     );
-    const rewrittenHandlerApex = rewriteHandlerSkillNames(d.handlerApex, uniquePrompting.stemMap);
+    const rewrittenHandlerApex = rewriteHandlerSkillNames(
+      findInjected.handlerApex,
+      uniquePrompting.stemMap
+    );
     const repairedHandlerApex = repairCommonApexSyntax(rewrittenHandlerApex);
     const sanitizedPromptCommands = uniquePrompting.commands.map((pc) => ({
       ...pc,
-      content: sanitizePromptCommandContent(pc.content),
+      content: repairEmptyPromptCommandSchema(
+        pc.fileName,
+        sanitizePromptCommandContent(pc.content)
+      ),
     }));
     const handlerErr = validateHandlerApex(
       repairedHandlerApex,
@@ -881,15 +1117,20 @@ switch on requestParam {
     const skillNames = sanitizedPromptCommands
       .map((pc) => promptStemFromFileName(pc.fileName))
       .filter(Boolean);
-    const intentDeployPlanDraft = ensureIntentActionDiversity(
-      d.intentDeployPlan,
-      params.handlerClass
-    );
-    const intentDeployPlan = enforceIntentPlanStrictness(
-      intentDeployPlanDraft,
-      skillNames,
-      params.handlerClass
-    );
+    const intentDeployPlan = skipIntents
+      ? []
+      : injectCaseCommentIntentIfMissing(
+          enforceIntentPlanStrictness(
+            ensureIntentActionDiversity(d.intentDeployPlan, params.handlerClass),
+            skillNames,
+            params.handlerClass,
+            useCase,
+            options?.intentResearchInstructions
+          ),
+          useCase,
+          options?.intentResearchInstructions,
+          params.agentDeveloperName
+        );
     const systemPromptErr = validateSystemPromptQuality(d.agentSystemPrompt);
     const finalSystemPrompt =
       systemPromptErr ?
@@ -910,11 +1151,15 @@ switch on requestParam {
       handlerMetaXml: META_XML,
       agentDescription: d.agentDescription,
       agentSystemPrompt: finalSystemPrompt,
-      intentsConfigMd: d.intentsConfigMd,
+      intentsConfigMd:
+        skipIntents ?
+          "## Intents\n\n*(None — skills-only build. Deploy uses **Skip intents**; GPTfy intent objects are not required.)*\n"
+        : d.intentsConfigMd,
       promptCommands: sanitizedPromptCommands,
       specMarkdown:
-        d.specMarkdown ??
-        `# ${params.agentName}\n\nAI-generated bundle. Deploy handler then run pipeline.`,
+        (d.specMarkdown ??
+          `# ${params.agentName}\n\nAI-generated bundle. Deploy handler then run pipeline.`) +
+        specFindNote,
       fullConfigStubApex:
         d.fullConfigStubApex ??
         `String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}';\n// TODO: intent rows`,

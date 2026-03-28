@@ -51,6 +51,8 @@ export async function POST(request: Request) {
     removeSkillsNotInBundle: p.removeSkillsNotInBundle === true,
     intentDeployMode: p.intentDeployMode,
     intentSyncDeleteOrgWhenBundleEmpty: p.intentSyncDeleteOrgWhenBundleEmpty === true,
+    skipIntents: p.skipIntents === true,
+    skillArtifactsOnly: p.skillArtifactsOnly === true,
   };
 
   const orgContext = {
@@ -113,7 +115,9 @@ export async function POST(request: Request) {
 
   const { bundle, warnings, openaiConfigured } = await buildBundleForPipeline(p, orgContext);
 
-  if (!bundle.intentDeployPlan?.length) {
+  if (p.skipIntents === true || p.skillArtifactsOnly === true) {
+    bundle.intentDeployPlan = [];
+  } else if (!bundle.intentDeployPlan?.length) {
     bundle.intentDeployPlan = defaultIntentDeployPlan(
       bundle.parameters.agentDeveloperName,
       bundle.parameters.agentName
