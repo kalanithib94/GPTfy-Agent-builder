@@ -1,0 +1,17 @@
+---
+description: Always commit and push completed work to the remote branch
+alwaysApply: true
+---
+
+# Git: commit and push
+
+After **any substantive code or config change** (features, fixes, new files, rule updates), **without waiting for the user to ask**:
+
+1. **`git status`** — confirm what changed.
+2. **`git add`** the relevant paths (not unrelated noise).
+3. **`git commit`** with a clear message (what changed and why).
+4. **`git push`** to the current tracking branch (e.g. `origin/<branch>`).
+
+If push fails (auth, network), retry once; if the repo is broken, repair worktree/remotes then push.
+
+Do **not** leave completed work only in the working tree when the session is done.
