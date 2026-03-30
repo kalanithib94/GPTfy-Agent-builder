@@ -253,7 +253,49 @@ export default function GeneratePage() {
     }
   }
 
+  /** API rejects bad identifiers; org picklists sometimes return labels with spaces/slashes. */
+  function validateIdentifiersForApi(): string | null {
+    const dev = agentDeveloperName.trim();
+    if (dev && !/^[A-Za-z][A-Za-z0-9_]*$/.test(dev)) {
+      return "Agent Developer Name must be a valid API identifier: letters, numbers, underscore only, starting with a letter. If you picked an agent from the org, fix Developer_Name__c in Salesforce (it may contain spaces or slashes) or type a valid name here that matches your agent.";
+    }
+    const hc = handlerClass.trim();
+    if (hc && !/^[A-Za-z][A-Za-z0-9_]*$/.test(hc)) {
+      return "Handler class must be a valid Apex class name (letters, numbers, underscore).";
+    }
+    const m = openaiModel.trim().replace(/\s+/g, "-");
+    if (m && !/^[A-Za-z0-9._:-]{2,80}$/.test(m)) {
+      return "OpenAI model ID must be like gpt-4.1 (use hyphens, not spaces).";
+    }
+    return null;
+  }
+
+  function formatApiValidationError(j: { error?: unknown; details?: unknown }): string {
+    if (typeof j.error === "string" && j.error !== "validation") {
+      return j.error;
+    }
+    const d = j.details as
+      | { fieldErrors?: Record<string, string[]>; formErrors?: string[] }
+      | undefined;
+    if (!d) return "Validation failed — check Agent Developer Name (no spaces/slashes), handler class, and model name.";
+    const parts: string[] = [];
+    if (Array.isArray(d.formErrors) && d.formErrors.length) {
+      parts.push(...d.formErrors);
+    }
+    if (d.fieldErrors) {
+      for (const [k, v] of Object.entries(d.fieldErrors)) {
+        if (Array.isArray(v) && v.length) {
+          parts.push(`${k}: ${v.join(", ")}`);
+        }
+      }
+    }
+    return parts.length > 0 ?
+        parts.join("\n")
+      : "Validation failed — check Agent Developer Name (API-safe: letters, numbers, underscore), handler class, and OpenAI model (e.g. gpt-4.1, no spaces).";
+  }
+
   function buildPayload() {
+    const modelNormalized = openaiModel.trim().replace(/\s+/g, "-");
     return {
       useCase,
       agentName: agentName || undefined,
@@ -264,7 +306,7 @@ export default function GeneratePage() {
       agentModelConnectionName: agentModelConnectionName || undefined,
       dataMappingName: dataMappingName || undefined,
       notes: notes || undefined,
-      openaiModel: openaiModel.trim() || undefined,
+      openaiModel: modelNormalized || undefined,
       useTemplateOnly: useTemplateOnly || undefined,
       mergeExistingHandler,
       overwriteMatchingSkills: overwriteMatchingSkills || undefined,
@@ -284,6 +326,12 @@ export default function GeneratePage() {
     if (useCase.trim().length < 10) {
       setErr("Use case must be at least 10 characters.");
       setAccordionOpen((prev) => ({ ...prev, brief: true }));
+      return;
+    }
+    const idErr = validateIdentifiersForApi();
+    if (idErr) {
+      setErr(idErr);
+      setAccordionOpen((prev) => ({ ...prev, ids: true }));
       return;
     }
     setErr(null);
@@ -308,12 +356,11 @@ export default function GeneratePage() {
           setErr("Connect Salesforce first.");
           return;
         }
-        const j = await res.json().catch(() => ({}));
-        setErr(
-          typeof j.error === "string"
-            ? j.error
-            : JSON.stringify(j.details ?? j, null, 2)
-        );
+        const j = (await res.json().catch(() => ({}))) as {
+          error?: unknown;
+          details?: unknown;
+        };
+        setErr(formatApiValidationError(j));
         return;
       }
 
@@ -482,6 +529,12 @@ export default function GeneratePage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const idErr = validateIdentifiersForApi();
+    if (idErr) {
+      setErr(idErr);
+      setAccordionOpen((prev) => ({ ...prev, ids: true }));
+      return;
+    }
     setErr(null);
     setBundle(null);
     setWarnings([]);
@@ -495,17 +548,18 @@ export default function GeneratePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildPayload()),
       });
-      const j = await res.json();
+      const j = (await res.json()) as {
+        error?: unknown;
+        details?: unknown;
+        bundle?: GeneratedBundle;
+        warnings?: string[];
+      };
       if (!res.ok) {
         if (res.status === 401) {
           setErr("Connect Salesforce first (Connect org → Connection check).");
           return;
         }
-        setErr(
-          typeof j.error === "string"
-            ? j.error
-            : JSON.stringify(j.details ?? j, null, 2)
-        );
+        setErr(formatApiValidationError(j));
         return;
       }
       setBundle(j.bundle as GeneratedBundle);
@@ -1062,6 +1116,14 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
                 alone). When connected, use <strong className="text-white/90">Agents in this org</strong> above to
                 fill both name and Developer Name for the record you want to update.
               </p>
+              {agentDeveloperName.trim().length > 0 &&
+              !/^[A-Za-z][A-Za-z0-9_]*$/.test(agentDeveloperName.trim()) ? (
+                <p className="text-[11px] text-rose-200/95 leading-snug rounded border border-rose-800/50 bg-rose-950/30 px-2 py-1.5">
+                  This value is not API-safe (spaces, slashes, or other symbols). Salesforce Developer names must
+                  look like <code className="text-cyan-200/90">My_Support_Agent</code>. Edit the field on the
+                  AI_Agent__c record in Salesforce, then refresh the list — or type a valid name here.
+                </p>
+              ) : null}
             </div>
             <Field
               label="Handler class"
