@@ -53,6 +53,7 @@ export async function POST(request: Request) {
     intentSyncDeleteOrgWhenBundleEmpty: p.intentSyncDeleteOrgWhenBundleEmpty === true,
     skipIntents: p.skipIntents === true,
     skillArtifactsOnly: p.skillArtifactsOnly === true,
+    targetAgentId: p.targetAgentId,
   };
 
   const orgContext = {

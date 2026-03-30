@@ -57,6 +57,11 @@ export type DeployBundleOptions = {
   skipIntents?: boolean;
   /** Prompt + handler only: no agent record or skill junction deploy. */
   skillArtifactsOnly?: boolean;
+  /**
+   * Update this AI_Agent__c Id directly (from org picker). PATCH includes Developer_Name__c from the bundle
+   * so the org field can be repaired when it was not API-safe.
+   */
+  targetAgentId?: string;
   /** Called after each deploy step (for streaming UI). */
   onDeployStep?: (step: DeployStep) => void;
   /** Called when a non-fatal error line is recorded (same as final `errors` array). */
@@ -1129,18 +1134,18 @@ export async function deployBundleToConnectedOrg(
       );
     } else {
       const devName = bundle.parameters.agentDeveloperName;
-      let agentRows = await runQuery(
-        instanceUrl,
-        token,
-        `SELECT Id FROM ${agentApi} WHERE ${fDev!} = '${soqlEscape(devName)}' LIMIT 1`
-      );
-      if (agentRows[0]?.Id) {
-        agentId = String(agentRows[0].Id);
+      const tid = options?.targetAgentId?.trim();
+      const useTargetId =
+        tid && /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/.test(tid) ? tid : undefined;
+
+      if (useTargetId) {
+        agentId = useTargetId;
         const patchBody: Record<string, unknown> = {
           [fModel!]: agentModelId,
           [fSys!]: bundle.agentSystemPrompt,
           [fDesc!]: bundle.agentDescription,
           [fAgStat!]: "Draft",
+          [fDev!]: devName,
         };
         const pr = await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
           method: "PATCH",
@@ -1148,24 +1153,48 @@ export async function deployBundleToConnectedOrg(
         });
         if (!pr.ok) throw new Error(`Agent update failed: ${pr.text.slice(0, 300)}`);
       } else {
-        const insertBody: Record<string, unknown> = {
-          Name: bundle.parameters.agentName,
-          [fDev!]: devName,
-          [fModel!]: agentModelId,
-          [fSys!]: bundle.agentSystemPrompt,
-          [fDesc!]: bundle.agentDescription,
-          [fAgStat!]: "Draft",
-        };
-        const ir = await fetchWithRefresh(`sobjects/${agentApi}`, {
-          method: "POST",
-          body: JSON.stringify(insertBody),
-        });
-        if (!ir.ok) throw new Error(`Agent insert failed: ${ir.text.slice(0, 400)}`);
-        const id = (ir.json as { id?: string })?.id;
-        if (!id) throw new Error("Agent insert returned no id");
-        agentId = id;
+        let agentRows = await runQuery(
+          instanceUrl,
+          token,
+          `SELECT Id FROM ${agentApi} WHERE ${fDev!} = '${soqlEscape(devName)}' LIMIT 1`
+        );
+        if (agentRows[0]?.Id) {
+          agentId = String(agentRows[0].Id);
+          const patchBody: Record<string, unknown> = {
+            [fModel!]: agentModelId,
+            [fSys!]: bundle.agentSystemPrompt,
+            [fDesc!]: bundle.agentDescription,
+            [fAgStat!]: "Draft",
+          };
+          const pr = await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
+            method: "PATCH",
+            body: JSON.stringify(patchBody),
+          });
+          if (!pr.ok) throw new Error(`Agent update failed: ${pr.text.slice(0, 300)}`);
+        } else {
+          const insertBody: Record<string, unknown> = {
+            Name: bundle.parameters.agentName,
+            [fDev!]: devName,
+            [fModel!]: agentModelId,
+            [fSys!]: bundle.agentSystemPrompt,
+            [fDesc!]: bundle.agentDescription,
+            [fAgStat!]: "Draft",
+          };
+          const ir = await fetchWithRefresh(`sobjects/${agentApi}`, {
+            method: "POST",
+            body: JSON.stringify(insertBody),
+          });
+          if (!ir.ok) throw new Error(`Agent insert failed: ${ir.text.slice(0, 400)}`);
+          const id = (ir.json as { id?: string })?.id;
+          if (!id) throw new Error("Agent insert returned no id");
+          agentId = id;
+        }
       }
-      addStep("Upsert AI_Agent__c", true, agentId);
+      addStep(
+        "Upsert AI_Agent__c",
+        true,
+        useTargetId ? `${agentId} (matched org row by Id; Developer Name set to bundle)` : agentId
+      );
 
       deployAgentMeta = { deployedAgentId: agentId, agentObjectApiName: agentApi };
 

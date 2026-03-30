@@ -20,6 +20,11 @@ const deployBodySchema = z.object({
   skipIntents: z.boolean().optional(),
   /** Apex + AI_Prompt__c only; no AI_Agent__c / skill junctions. */
   skillArtifactsOnly: z.boolean().optional(),
+  /** Update this AI_Agent__c Id (from org picker) instead of matching by Developer Name only. */
+  targetAgentId: z
+    .string()
+    .regex(/^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/)
+    .optional(),
   /** When true, response is NDJSON stream with live deploy steps + final complete event. */
   stream: z.boolean().optional(),
 });
@@ -57,6 +62,7 @@ export async function POST(request: Request) {
     intentSyncDeleteOrgWhenBundleEmpty,
     skipIntents,
     skillArtifactsOnly,
+    targetAgentId,
     stream,
   } = parsed.data;
 
@@ -68,6 +74,7 @@ export async function POST(request: Request) {
     intentSyncDeleteOrgWhenBundleEmpty: intentSyncDeleteOrgWhenBundleEmpty === true,
     skipIntents: skipIntents === true,
     skillArtifactsOnly: skillArtifactsOnly === true,
+    targetAgentId,
   };
 
   async function runOrgValidation() {

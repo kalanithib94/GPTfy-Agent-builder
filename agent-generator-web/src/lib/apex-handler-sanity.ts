@@ -36,6 +36,23 @@ function apexCodeOnlyForStringChecks(apex: string): string {
 }
 
 /** Repair patterns that are safe to apply without parsing Apex. */
+/**
+ * LLMs often omit the required null-guard; validation expects `if (parameters == null)`.
+ * Inserts immediately after the executeMethod signature opening brace when missing.
+ */
+export function ensureExecuteMethodNullParametersGuard(apex: string): string {
+  if (/if\s*\(\s*parameters\s*==\s*null\s*\)/.test(apex)) {
+    return apex;
+  }
+  const re =
+    /(global\s+String\s+executeMethod\s*\(\s*String\s+requestParam\s*,\s*Map<String\s*,\s*Object>\s+parameters\s*\)\s*\{)/;
+  if (!re.test(apex)) return apex;
+  return apex.replace(
+    re,
+    "$1\n        if (parameters == null) parameters = new Map<String, Object>();"
+  );
+}
+
 export function repairHandlerApexCommonIssues(apex: string): string {
   let s = apex;
   // Models sometimes emit void helpers though the contract is JSON String responses.
@@ -46,6 +63,7 @@ export function repairHandlerApexCommonIssues(apex: string): string {
   // Markdown headings accidentally pasted into Apex.
   s = s.replace(/^\s*#{1,6}\s+[^\r\n]*\r?\n/gm, "");
   s = s.replace(/^\s*#{1,6}\s+[^\r\n]*$/gm, "");
+  s = ensureExecuteMethodNullParametersGuard(s);
   return s;
 }
 

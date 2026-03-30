@@ -7,6 +7,7 @@ import type { IntentDeployPlan } from "@/lib/intent-deploy-types";
 import { lightningRecordViewUrl } from "@/lib/salesforce-lightning-url";
 import { consumeDeployNdjsonStream } from "@/lib/deploy-stream-client";
 import type { DeployStep } from "@/lib/sf-deploy-pipeline";
+import { sanitizeSalesforceApiIdentifier } from "@/lib/sf-api-identifiers";
 
 type SessionInfo = {
   connected: boolean;
@@ -179,6 +180,8 @@ export default function GeneratePage() {
   const [orgAgents, setOrgAgents] = useState<
     { id: string; name: string; developerName: string }[]
   >([]);
+  /** Set when user picks a row in the org list; deploy can target AI_Agent__c by Id (fixes bad Developer_Name__c in org). */
+  const [selectedOrgAgentId, setSelectedOrgAgentId] = useState("");
   const [orgAgentsLoading, setOrgAgentsLoading] = useState(false);
   const [orgAgentsError, setOrgAgentsError] = useState<string | null>(null);
 
@@ -234,15 +237,9 @@ export default function GeneratePage() {
     } else {
       setOrgAgents([]);
       setOrgAgentsError(null);
+      setSelectedOrgAgentId("");
     }
   }, [session?.connected, loadOrgAgents]);
-
-  /** Which org row matches the current Developer Name (the key deploy uses to upsert AI_Agent__c). */
-  const matchedOrgAgentId = useMemo(() => {
-    const dev = agentDeveloperName.trim();
-    if (!dev) return "";
-    return orgAgents.find((a) => a.developerName === dev)?.id ?? "";
-  }, [agentDeveloperName, orgAgents]);
 
   function onAgentTargetChange(mode: "new" | "existing") {
     setAgentTargetMode(mode);
@@ -250,8 +247,34 @@ export default function GeneratePage() {
       setMergeExistingHandler(true);
     } else {
       setMergeExistingHandler(false);
+      setSelectedOrgAgentId("");
     }
   }
+
+  function expectedDeveloperNameForOrgRow(row: {
+    developerName: string;
+    name: string;
+  }): string {
+    const dev = row.developerName.trim();
+    if (/^[A-Za-z][A-Za-z0-9_]*$/.test(dev)) return dev;
+    return sanitizeSalesforceApiIdentifier(dev, row.name);
+  }
+
+  const onAgentDeveloperNameInput = useCallback(
+    (v: string) => {
+      setAgentDeveloperName(v);
+      if (!selectedOrgAgentId) return;
+      const row = orgAgents.find((a) => a.id === selectedOrgAgentId);
+      if (!row) {
+        setSelectedOrgAgentId("");
+        return;
+      }
+      if (v.trim() !== expectedDeveloperNameForOrgRow(row)) {
+        setSelectedOrgAgentId("");
+      }
+    },
+    [selectedOrgAgentId, orgAgents]
+  );
 
   /** API rejects bad identifiers; org picklists sometimes return labels with spaces/slashes. */
   function validateIdentifiersForApi(): string | null {
@@ -318,6 +341,7 @@ export default function GeneratePage() {
       skillArtifactsOnly: skillArtifactsOnly === true ? true : undefined,
       streamDeploy: true,
       intentResearchInstructions: intentResearchInstructions.trim() || undefined,
+      targetAgentId: selectedOrgAgentId.trim() || undefined,
     };
   }
 
@@ -436,6 +460,7 @@ export default function GeneratePage() {
           intentSyncDeleteOrgWhenBundleEmpty: intentSyncDeleteOrgWhenBundleEmpty === true,
           skipIntents: skipIntents === true,
           skillArtifactsOnly: skillArtifactsOnly === true,
+          targetAgentId: selectedOrgAgentId.trim() || undefined,
           stream: true,
         }),
       });
@@ -1059,13 +1084,18 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
                   </button>
                 </div>
                 <select
-                  value={matchedOrgAgentId}
+                  value={selectedOrgAgentId}
                   onChange={(e) => {
-                    const row = orgAgents.find((a) => a.id === e.target.value);
-                    if (row) {
-                      setAgentName(row.name);
-                      setAgentDeveloperName(row.developerName);
+                    const id = e.target.value;
+                    if (!id) {
+                      setSelectedOrgAgentId("");
+                      return;
                     }
+                    const row = orgAgents.find((a) => a.id === id);
+                    if (!row) return;
+                    setSelectedOrgAgentId(id);
+                    setAgentName(row.name);
+                    setAgentDeveloperName(expectedDeveloperNameForOrgRow(row));
                   }}
                   disabled={orgAgentsLoading}
                   className="w-full max-w-xl rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-600 disabled:opacity-60"
@@ -1088,9 +1118,10 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
                   </p>
                 ) : null}
                 <p className="text-[11px] text-[var(--muted)] leading-snug">
-                  Works for <strong className="text-white/85">any</strong> agent in the org: the deploy step
-                  upserts by Developer Name — choosing a row here sets that key and the display name so you
-                  don&apos;t create a duplicate by mistake.
+                  Choosing a row loads <strong className="text-white/85">Name</strong> and{" "}
+                  <strong className="text-white/85">Developer_Name__c</strong> from Salesforce. If the org
+                  value isn&apos;t API-safe, we suggest a valid Developer Name and deploy{" "}
+                  <strong className="text-white/85">updates that record by Id</strong> so upsert still works.
                 </p>
               </div>
             ) : (
@@ -1108,7 +1139,7 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
               <Field
                 label="Agent Developer Name"
                 value={agentDeveloperName}
-                onChange={setAgentDeveloperName}
+                onChange={onAgentDeveloperNameInput}
                 placeholder="My_Support_Agent"
               />
               <p className="text-[11px] text-[var(--muted)] leading-snug">

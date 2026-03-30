@@ -59,6 +59,14 @@ export const generateRequestSchema = z.object({
   skillArtifactsOnly: z.boolean().optional(),
   /** When true, POST /api/pipeline/run returns NDJSON with live deploy steps + final complete event. */
   streamDeploy: z.boolean().optional(),
+  /**
+   * When set (user picked a row under "Agents in this org"), deploy updates that AI_Agent__c by Id
+   * instead of matching only by Developer Name — fixes upsert when org Developer_Name__c is not API-safe.
+   */
+  targetAgentId: z
+    .string()
+    .regex(/^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/)
+    .optional(),
 });
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>;
