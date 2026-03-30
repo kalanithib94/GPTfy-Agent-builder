@@ -55,7 +55,10 @@ export type DeployBundleOptions = {
   intentSyncDeleteOrgWhenBundleEmpty?: boolean;
   /** Skip all intent metadata (no AI_Agent_Intent__c describe or DML). */
   skipIntents?: boolean;
-  /** Prompt + handler only: no agent record or skill junction deploy. */
+  /**
+   * Prompt + handler only: no new AI_Agent__c row. If {@link targetAgentId} is set, still links
+   * AI_Agent_Skill__c and toggles Draft → Active around that update.
+   */
   skillArtifactsOnly?: boolean;
   /**
    * Update this AI_Agent__c Id directly (from org picker). PATCH includes Developer_Name__c from the bundle
@@ -1118,20 +1121,78 @@ export async function deployBundleToConnectedOrg(
     }
 
     let agentId: string | undefined;
+    const skillTargetIdRaw = options?.targetAgentId?.trim();
+    const skillTargetId =
+      skillTargetIdRaw && /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/.test(skillTargetIdRaw) ?
+        skillTargetIdRaw
+      : undefined;
+
     if (skillOnly) {
-      for (const pr of promptRows) {
-        const pid = String(pr.Id);
-        await fetchWithRefresh(`sobjects/${promptApi}/${pid}`, {
+      if (skillTargetId) {
+        agentId = skillTargetId;
+        await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {
           method: "PATCH",
-          body: JSON.stringify({ [fStat!]: "Active" }),
+          body: JSON.stringify({ [fAgStat!]: "Draft" }),
         });
+        addStep("Unpublish AI_Agent__c (Draft)", true, "Before linking skills — safe update while not Active");
+
+        const inPromptsSkill = promptIds.map((id) => `'${soqlEscape(id)}'`).join(",");
+        const skillDelOnly = await runQuery(
+          instanceUrl,
+          token,
+          `SELECT Id FROM ${skillApi} WHERE ${skillAgentFld} = '${soqlEscape(agentId)}' AND ${skillPromptFld} IN (${inPromptsSkill})`
+        );
+        for (const s of skillDelOnly) {
+          await fetchWithRefresh(`sobjects/${skillApi}/${s.Id}`, { method: "DELETE" });
+        }
+        for (const pid of promptIds) {
+          const sb: Record<string, unknown> = {
+            [skillAgentFld!]: agentId,
+            [skillPromptFld!]: pid,
+          };
+          const sr = await fetchWithRefresh(`sobjects/${skillApi}`, {
+            method: "POST",
+            body: JSON.stringify(sb),
+          });
+          if (!sr.ok) {
+            pushErr(`Skill insert failed: ${sr.text.slice(0, 200)}`);
+          }
+        }
+        addStep(
+          "Link AI_Agent_Skill__c (selected agent)",
+          true,
+          `${promptIds.length} prompt(s) → agent ${agentId}`
+        );
+        deployAgentMeta = { deployedAgentId: agentId, agentObjectApiName: agentApi };
+
+        for (const pr of promptRows) {
+          const pid = String(pr.Id);
+          await fetchWithRefresh(`sobjects/${promptApi}/${pid}`, {
+            method: "PATCH",
+            body: JSON.stringify({ [fStat!]: "Active" }),
+          });
+        }
+        addStep("Activate AI_Prompt__c records", true);
+        addStep(
+          "Skill artifacts only",
+          true,
+          "Handler + prompts deployed and linked to the agent you picked (unpublished → linked → will publish Active)."
+        );
+      } else {
+        for (const pr of promptRows) {
+          const pid = String(pr.Id);
+          await fetchWithRefresh(`sobjects/${promptApi}/${pid}`, {
+            method: "PATCH",
+            body: JSON.stringify({ [fStat!]: "Active" }),
+          });
+        }
+        addStep("Activate AI_Prompt__c records", true);
+        addStep(
+          "Skill artifacts only",
+          true,
+          "Handler + AI_Prompt__c deployed. Pick an agent above and redeploy, or link AI_Prompt__c via AI_Agent_Skill__c in Salesforce."
+        );
       }
-      addStep("Activate AI_Prompt__c records", true);
-      addStep(
-        "Skill artifacts only",
-        true,
-        "Handler + AI_Prompt__c deployed. Add these prompts to an agent in GPTfy (link AI_Prompt__c via AI_Agent_Skill__c) — no AI_Agent__c deploy in this mode."
-      );
     } else {
       const devName = bundle.parameters.agentDeveloperName;
       const tid = options?.targetAgentId?.trim();
@@ -1821,7 +1882,7 @@ export async function deployBundleToConnectedOrg(
       return { ok: false, steps, errors, ...deployAgentMeta };
     }
 
-    if (skillOnly) {
+    if (skillOnly && !agentId) {
       addStep("Publish AI_Agent__c (Active)", true, "Skipped — skill-artifacts-only deploy (no agent row)");
     } else if (agentId) {
       await fetchWithRefresh(`sobjects/${agentApi}/${agentId}`, {

@@ -932,10 +932,11 @@ export default function GeneratePage() {
                     <span className="font-medium text-white">Skill artifacts only</span>
                     <span className="block text-[var(--muted)] mt-0.5 leading-snug">
                       Generate <strong className="text-white">AI_Prompt__c</strong> JSON + Apex handler only. Deploy
-                      upserts and activates prompts; does <strong className="text-white">not</strong> create or update{" "}
-                      <code className="text-cyan-200/80">AI_Agent__c</code> /{" "}
-                      <code className="text-cyan-200/80">AI_Agent_Skill__c</code>. Link prompts to your agent in
-                      Salesforce manually.
+                      upserts prompts and compiles the handler. If you pick an agent under{" "}
+                      <strong className="text-white/90">Agents in this org</strong>, deploy{" "}
+                      <strong className="text-white">unpublishes (Draft) → links skills → publishes (Active)</strong>{" "}
+                      for that row only — no new <code className="text-cyan-200/80">AI_Agent__c</code> record. With no
+                      agent selected, link prompts in Salesforce yourself.
                     </span>
                   </span>
                 </label>
