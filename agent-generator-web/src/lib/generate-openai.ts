@@ -6,6 +6,7 @@ import {
 } from "./find-by-name-inject";
 import { repairEmptyPromptCommandSchema } from "./prompt-command-schema-repair";
 import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
+import { repairCaseSoqlNameUsage } from "./apex-case-soql-repair";
 import {
   getHandlerStructuralIssues,
   repairHandlerApexCommonIssues,
@@ -222,6 +223,7 @@ function repairCommonApexSyntax(apex: string): string {
   let out = repairHandlerApexCommonIssues(apex);
   out = repairJavaStyleSwitchOnRequestParam(out);
   out = repairCaseCommentCaseIdToParentId(out);
+  out = repairCaseSoqlNameUsage(out);
   // Auto-repair common LLM slip: JSON-style map literals in Apex.
   out = out.replace(/'([A-Za-z0-9_]+)'\s*:/g, "'$1' =>");
   return out;

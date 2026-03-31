@@ -12,6 +12,7 @@ import type { SfSessionData } from "./session";
 import { readFile } from "fs/promises";
 import path from "path";
 import { repairCaseCommentCaseIdToParentId } from "./apex-casecomment-repair";
+import { repairCaseSoqlNameUsage } from "./apex-case-soql-repair";
 import {
   getHandlerStructuralIssues,
   repairHandlerApexCommonIssues,
@@ -962,6 +963,7 @@ export async function deployBundleToConnectedOrg(
     }
 
     handlerApexToDeploy = repairCaseCommentCaseIdToParentId(handlerApexToDeploy);
+    handlerApexToDeploy = repairCaseSoqlNameUsage(handlerApexToDeploy);
     handlerApexToDeploy = repairHandlerApexCommonIssues(handlerApexToDeploy);
 
     const soqlFieldIssues = await preflightValidateHandlerSoqlCustomFields(
