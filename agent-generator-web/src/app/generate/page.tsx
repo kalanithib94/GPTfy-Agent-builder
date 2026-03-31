@@ -178,7 +178,7 @@ export default function GeneratePage() {
 
   /** Rows from connected org — used to set Developer Name + display name without manual copy/paste. */
   const [orgAgents, setOrgAgents] = useState<
-    { id: string; name: string; developerName: string }[]
+    { id: string; name: string; developerName: string; handlerClass?: string }[]
   >([]);
   /** Set when user picks a row in the org list; deploy can target AI_Agent__c by Id (fixes bad Developer_Name__c in org). */
   const [selectedOrgAgentId, setSelectedOrgAgentId] = useState("");
@@ -214,7 +214,7 @@ export default function GeneratePage() {
     try {
       const res = await fetch("/api/org/agents", { cache: "no-store" });
       const data = (await res.json()) as {
-        agents?: { id: string; name: string; developerName: string }[];
+        agents?: { id: string; name: string; developerName: string; handlerClass?: string }[];
         error?: string;
       };
       if (!res.ok) {
@@ -1097,6 +1097,9 @@ Example: intents: greeting, find_case; skills: MyAgent_search —`}
                     setSelectedOrgAgentId(id);
                     setAgentName(row.name);
                     setAgentDeveloperName(expectedDeveloperNameForOrgRow(row));
+                    if (row.handlerClass?.trim()) {
+                      setHandlerClass(row.handlerClass.trim());
+                    }
                   }}
                   disabled={orgAgentsLoading}
                   className="w-full max-w-xl rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-600 disabled:opacity-60"
