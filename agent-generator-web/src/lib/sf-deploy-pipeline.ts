@@ -103,6 +103,44 @@ function rewriteHandlerSkillNames(apex: string, stemMap: Map<string, string>): s
   return out;
 }
 
+function extractHandlerWhenSkillNames(apex: string): string[] {
+  const out: string[] = [];
+  const re = /\bwhen\s+'([^']+)'\s*\{/g;
+  let m: RegExpExecArray | null = null;
+  while ((m = re.exec(apex)) !== null) {
+    const name = String(m[1] ?? "").trim();
+    if (name) out.push(name);
+  }
+  return out;
+}
+
+function validatePromptHandlerSkillAlignment(
+  handlerApex: string,
+  promptCommands: { fileName: string }[]
+): { ok: true } | { ok: false; message: string } {
+  const promptStems = Array.from(
+    new Set(promptCommands.map((pc) => promptStemFromFileName(pc.fileName)).filter(Boolean))
+  );
+  const whenNames = Array.from(new Set(extractHandlerWhenSkillNames(handlerApex)));
+  const whenSet = new Set(whenNames);
+  const promptSet = new Set(promptStems);
+
+  const missingInHandler = promptStems.filter((s) => !whenSet.has(s));
+  const missingInPrompts = whenNames.filter((s) => !promptSet.has(s));
+
+  if (missingInHandler.length === 0 && missingInPrompts.length === 0) {
+    return { ok: true };
+  }
+  const bits: string[] = [];
+  if (missingInHandler.length) {
+    bits.push(`missing handler when branches for: ${missingInHandler.slice(0, 8).join(", ")}`);
+  }
+  if (missingInPrompts.length) {
+    bits.push(`handler has when branches without prompt commands: ${missingInPrompts.slice(0, 8).join(", ")}`);
+  }
+  return { ok: false, message: bits.join(" | ") };
+}
+
 function truncateName(s: string, max: number): string {
   return s.length <= max ? s : s.substring(0, max);
 }
@@ -974,6 +1012,14 @@ export async function deployBundleToConnectedOrg(
     } else {
       addStep("Preflight validate handler Apex", true);
     }
+
+    const align = validatePromptHandlerSkillAlignment(handlerApexToDeploy, bundle.promptCommands);
+    if (!align.ok) {
+      addStep("Validate handler/prompt skill-key alignment", false, align.message);
+      pushErr(`Skill-key alignment failed: ${align.message}`);
+      return { ok: false, steps, errors };
+    }
+    addStep("Validate handler/prompt skill-key alignment", true);
 
     const meta = await deployApexClassMetadata(
       instanceUrl,
