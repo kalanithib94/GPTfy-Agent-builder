@@ -137,6 +137,18 @@ function normalizePicklistValue(input: string | undefined, allowed: string[]): s
   return fuzzy ?? null;
 }
 
+function inferDefaultObjectFromMappingName(mappingName: string): string | null {
+  const n = (mappingName ?? "").trim().toLowerCase();
+  if (!n) return null;
+  if (n.includes("account")) return "Account";
+  if (n.includes("case")) return "Case";
+  if (n.includes("contact")) return "Contact";
+  if (n.includes("opportunity")) return "Opportunity";
+  if (n.includes("lead")) return "Lead";
+  if (n.includes("task")) return "Task";
+  return null;
+}
+
 function coerceActionType(raw: string | undefined, allowed: string[]): string {
   const normalized = normalizePicklistValue(raw, allowed);
   if (normalized) return normalized;
@@ -699,6 +711,7 @@ export async function deployBundleToConnectedOrg(
     const fClass = pickField(pf, "Agentic_Function_Class__c");
     const fConn = pickField(pf, "AI_Connection__c");
     const fMap = pickField(pf, "AI_Data_Extraction_Mapping__c");
+    const fPromptObj = pickFieldAny(pf, ["Object_API_Name__c", "Object_Name__c", "Object__c"]);
     const fType = pickField(pf, "Type__c");
     const fStat = pickField(pf, "Status__c");
     const fConnType = pickField(cf, "Type__c");
@@ -1030,8 +1043,37 @@ export async function deployBundleToConnectedOrg(
       );
     }
     const mapId = String(rows[0].Id);
+    let promptDefaultObject: string | null = null;
+    const mapDesc = await describeSObject(instanceUrl, token, API_VER, mapApi);
+    if (mapDesc.ok) {
+      const fMapObj = pickFieldAny(mapDesc.body.fields, [
+        "Primary_Object_API_Name__c",
+        "Primary_Object__c",
+        "Object_API_Name__c",
+        "Object_Name__c",
+        "SObject_API_Name__c",
+        "SObject__c",
+        "Object__c",
+      ]);
+      if (fMapObj) {
+        const mapObjRows = await runQuery(
+          instanceUrl,
+          token,
+          `SELECT ${fMapObj} FROM ${mapApi} WHERE Id = '${soqlEscape(mapId)}' LIMIT 1`
+        );
+        const mapObj = String(mapObjRows[0]?.[fMapObj] ?? "").trim();
+        if (mapObj) promptDefaultObject = mapObj;
+      }
+    }
+    if (!promptDefaultObject) {
+      promptDefaultObject = inferDefaultObjectFromMappingName(bundle.parameters.dataMappingName);
+    }
 
-    addStep("Resolve connections & mapping", true);
+    addStep(
+      "Resolve connections & mapping",
+      true,
+      promptDefaultObject ? `default prompt object: ${promptDefaultObject}` : undefined
+    );
 
     const handlerName = bundle.parameters.handlerClass;
 
@@ -1053,6 +1095,9 @@ export async function deployBundleToConnectedOrg(
         [fCmd!]: sanitizedPrompt.content,
         [fClass!]: handlerName,
       };
+      if (fPromptObj && promptDefaultObject) {
+        body[fPromptObj] = promptDefaultObject;
+      }
 
       const path = `sobjects/${encodeURIComponent(promptApi)}/${encodeURIComponent(fExt!)}/${encodeURIComponent(extVal)}`;
       const patch = await fetchWithRefresh(path, {
