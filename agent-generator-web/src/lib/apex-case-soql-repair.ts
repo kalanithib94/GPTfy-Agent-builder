@@ -20,8 +20,8 @@ export function repairCaseSoqlNameUsage(apex: string): string {
 }
 
 /**
- * Some objects are not filterable by Description in SOQL WHERE.
- * Remove Description LIKE predicates while preserving the rest of the clause.
+ * Some objects are not filterable on Description in SOQL WHERE.
+ * Remove Description LIKE predicates while preserving the rest.
  */
 export function repairNonFilterableDescriptionLike(apex: string): string {
   let s = apex;

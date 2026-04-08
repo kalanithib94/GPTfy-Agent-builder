@@ -53,18 +53,6 @@ type OpenAIResult =
   | { ok: true; bundle: GeneratedBundle }
   | { ok: false; error: string };
 
-function extractDeclaredApexClassNames(apex: string): string[] {
-  const names = new Set<string>();
-  const re =
-    /\b(?:global|public|private|protected)\s+(?:virtual\s+|abstract\s+|with\s+sharing\s+|without\s+sharing\s+|inherited\s+sharing\s+)*class\s+([A-Za-z][A-Za-z0-9_]*)\b/gm;
-  let m: RegExpExecArray | null = re.exec(apex);
-  while (m) {
-    names.add(m[1]);
-    m = re.exec(apex);
-  }
-  return Array.from(names);
-}
-
 type GenerateWithOpenAIOptions = {
   modelOverride?: string;
   previousHandlerApex?: string;
@@ -807,19 +795,6 @@ export async function generateWithOpenAI(
     expectedClass: string,
     expectedInterface: string
   ): string | null => {
-    const declaredClassNames = extractDeclaredApexClassNames(apex);
-    if (declaredClassNames.length === 0) {
-      return "handlerApex does not declare any Apex class";
-    }
-    if (!declaredClassNames.includes(expectedClass)) {
-      return `handlerApex class mismatch: expected ${expectedClass}, found ${declaredClassNames.join(", ")}`;
-    }
-    const otherAgentic = declaredClassNames.filter(
-      (n) => n !== expectedClass && /AgenticHandler$/i.test(n)
-    );
-    if (otherAgentic.length > 0) {
-      return `handlerApex declares extra handler classes (${otherAgentic.join(", ")}); keep only ${expectedClass}`;
-    }
     if (!new RegExp(`global\\s+with\\s+sharing\\s+class\\s+${expectedClass}\\b`).test(apex)) {
       return "missing required global class signature";
     }
@@ -979,7 +954,6 @@ handlerApex requirements:
 - Validate required input parameters in each skill and return err(...) when missing.
 - Keep each skill branch small by delegating to private helper methods (e.g., handleFindOpportunity(parameters)).
 - Prefer standard fields in handler SOQL: **Account, Contact, Lead, Opportunity** use **Name**; **Case** does **not** — use **Subject**, **CaseNumber**, **Status**, **Priority**, **Description** (never WHERE Name or SELECT Name on Case). **Opportunity** uses **Name**, **StageName**, **CloseDate**; **Task** uses **Subject**, **ActivityDate**.
-- In SOQL, only place fields in **WHERE** when they are filterable in Salesforce describe metadata. If you need to search long text (e.g., many **Description** fields), use **SOSL** or another filterable proxy field; do not emit non-filterable field predicates.
 - **CaseComment:** the lookup to Case is **ParentId** (the Case Id). There is **no** CaseId field on CaseComment — never use CaseComment.CaseId or CaseId= in CaseComment DML/SOQL.
 - **Record links:** Build Lightning URLs by appending "/lightning/r/" + ObjectApiName + "/" + recordId + "/view" to **Url.getOrgDomainUrl().toExternalForm()**. Never use **Url.getSalesforceBaseUrl()** or **System.Url.getSalesforceBaseUrl()** (removed after API 58.0).
 - Do not hardcode custom fields (anything ending in __c) in handler SOQL unless they are first resolved/validated from org metadata.
