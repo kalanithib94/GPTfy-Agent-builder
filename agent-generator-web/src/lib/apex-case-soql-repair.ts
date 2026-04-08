@@ -19,3 +19,23 @@ export function repairCaseSoqlNameUsage(apex: string): string {
   return s;
 }
 
+/**
+ * Some objects are not filterable by Description in SOQL WHERE.
+ * Remove Description LIKE predicates while preserving the rest of the clause.
+ */
+export function repairNonFilterableDescriptionLike(apex: string): string {
+  let s = apex;
+
+  // Parenthesized OR groups.
+  s = s.replace(/\(\s*([^()]*?)\s+OR\s+Description\s+LIKE\s+([^)]+)\)/gi, "($1)");
+  s = s.replace(/\(\s*Description\s+LIKE\s+([^)]+)\s+OR\s+([^()]*?)\)/gi, "($2)");
+
+  // Non-parenthesized boolean fragments.
+  s = s.replace(/\s+OR\s+Description\s+LIKE\s+(:?[^\s)\]]+|'[^']*')/gi, "");
+  s = s.replace(/\bDescription\s+LIKE\s+(:?[^\s)\]]+|'[^']*')\s+OR\s+/gi, "");
+  s = s.replace(/\s+AND\s+Description\s+LIKE\s+(:?[^\s)\]]+|'[^']*')/gi, "");
+  s = s.replace(/\bDescription\s+LIKE\s+(:?[^\s)\]]+|'[^']*')\s+AND\s+/gi, "");
+
+  return s;
+}
+
