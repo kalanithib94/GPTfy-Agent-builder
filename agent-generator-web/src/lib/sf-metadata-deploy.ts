@@ -4,6 +4,15 @@ export type MetadataDeployResult =
   | { ok: true }
   | { ok: false; message: string; details?: string };
 
+function applyMetadataDeployPolling(conn: {
+  metadata: { pollInterval: number; pollTimeout: number };
+}): void {
+  // jsforce MetadataApi defaults: pollInterval 1s, pollTimeout 10s — far too low for
+  // real-org Metadata deploys; otherwise complete() throws "Polling time out".
+  conn.metadata.pollInterval = 5000;
+  conn.metadata.pollTimeout = 900000; // 15 minutes
+}
+
 /**
  * Deploy a single Apex class via Metadata API (async deploy + wait).
  */
@@ -35,6 +44,7 @@ export async function deployApexClassMetadata(
       accessToken,
       version: "59.0",
     });
+    applyMetadataDeployPolling(conn);
 
     const deployResult = await conn.metadata
       .deploy(buf, {
@@ -101,6 +111,7 @@ export async function deployFlowMetadata(
       accessToken,
       version: "59.0",
     });
+    applyMetadataDeployPolling(conn);
 
     const deployResult = await conn.metadata
       .deploy(buf, {
