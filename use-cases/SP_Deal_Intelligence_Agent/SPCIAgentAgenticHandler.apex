@@ -64,7 +64,6 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
 
   // ─── Find Opportunity ─────────────────────────────────────────────────────────
 
-  /** V2-8418 — Supports both name-based LIKE search and direct Id lookup. */
   private String handleFindOpportunityByName(Map<String, Object> parameters) {
     String oppName = toText(parameters.get('opportunity_name'));
     if (String.isBlank(oppName)) return err('Missing required parameter: opportunity_name');
@@ -72,6 +71,7 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
 
     List<Opportunity> opps;
 
+    // V2-8418 — If input looks like a Salesforce Opportunity Id, do an exact Id lookup
     if (oppName.trim().startsWith('006') && oppName.trim().length() >= 15) {
       try {
         Id oppId = Id.valueOf(oppName.trim());
@@ -113,6 +113,10 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
 
   // ─── GPTfy-backed Prompts ─────────────────────────────────────────────────────
 
+  /**
+   * V2-8180 — 'message' is kept intentionally: GPTfy already returns LLM-formatted
+   * prose — the agent surfaces it verbatim rather than reformatting.
+   */
   @TestVisible private static Boolean bypassPromptForUnitTest = false;
 
   private String runOpportunityPrompt(Map<String, Object> parameters, String promptRequestId) {
@@ -161,6 +165,11 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
 
   // ─── Add Activity (Task) ──────────────────────────────────────────────────────
 
+  /**
+   * Returns a raw HTML string. The LWC renders the response verbatim, so
+   * structural HTML survives any sanitizer and looks clean on screen.
+   * No JSON wrapping for this skill — the response IS the rendered card.
+   */
   private String handleUpdateDealAddActivity(Map<String, Object> parameters) {
     String oppId           = toText(parameters.get('opportunity_id'));
     String subject         = toText(parameters.get('activity_subject'));
@@ -187,6 +196,7 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
     );
     insert t;
 
+    // Re-query to confirm values that may be defaulted by org rules
     Task inserted = [SELECT Id, Subject, Status, Priority, ActivityDate FROM Task WHERE Id = :t.Id LIMIT 1];
     String taskUrl = Url.getOrgDomainUrl().toExternalForm() + '/lightning/r/Task/' + inserted.Id + '/view';
 
@@ -204,7 +214,17 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
 
   // ─── Update Opportunity Fields ────────────────────────────────────────────────
 
-  /** V2-8418 — Updates Opportunity CloseDate and/or StageName. */
+  /**
+   * V2-8418 — Updates Opportunity CloseDate and/or StageName.
+   *
+   * IMPORTANT: The system prompt resolves ALL relative date expressions
+   * ("next monday" etc.) to concrete yyyy-MM-dd BEFORE
+   * calling this method. parseToDate() is a safety net for concrete formats
+   * only — it does NOT handle free-text relative expressions.
+   *
+   * Returns a raw HTML diff card (success or error). The LWC renders the
+   * response verbatim — no JSON wrapping for this skill.
+   */
   private String handleUpdateDealOpportunityFields(Map<String, Object> parameters) {
     String oppId        = toText(parameters.get('opportunity_id'));
     String newStageName = toText(parameters.get('new_stage_name'));
@@ -227,6 +247,7 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
     if (opps.isEmpty()) return errHtml('Could not update opportunity', 'No opportunity found for the provided Id.');
 
     Opportunity o = opps[0];
+    // Capture pre-update values for the diff display
     String oldStageName = o.StageName;
     Date   oldCloseDate = o.CloseDate;
 
@@ -238,6 +259,7 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
 
     update o;
 
+    // Re-query to confirm the values that were actually saved
     Opportunity updated = [SELECT Id, Name, StageName, CloseDate FROM Opportunity WHERE Id = :oppId LIMIT 1];
     String oppUrl = Url.getOrgDomainUrl().toExternalForm() + '/lightning/r/Opportunity/' + updated.Id + '/view';
 
@@ -358,10 +380,21 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
     return s.escapeHtml4();
   }
 
+  /**
+   * HTML error block used by the two skills that return raw HTML strings
+   * (handleUpdateDealAddActivity, handleUpdateDealOpportunityFields).
+   * Other skills continue to use err() which returns JSON.
+   */
   private static String errHtml(String title, String message) {
     return '<div>⚠️ <b>' + escapeHtml(title) + '</b><br/>' + escapeHtml(message) + '</div>';
   }
 
+  /**
+   * Parses concrete date values passed by the agent.
+   * The system prompt is responsible for resolving relative expressions
+   * ("next monday" etc.) to yyyy-MM-dd BEFORE this is called.
+   * Supports: Date, Datetime, "yyyy-MM-dd", "MM/dd/yyyy", "dd/MM/yyyy".
+   */
   private static Date parseToDate(Object o) {
     if (o == null) return null;
     if (o instanceof Date)     return (Date) o;
@@ -369,7 +402,9 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
     String s = toText(o);
     if (String.isBlank(s)) return null;
     s = s.trim();
+    // ISO yyyy-MM-dd
     try { if (s.length() == 10 && s.contains('-')) return Date.valueOf(s); } catch (Exception e) {}
+    // Slash-separated
     try {
       if (s.contains('/')) {
         List<String> parts = s.split('/', 0);
@@ -378,12 +413,13 @@ global with sharing class SPCIAgentAgenticHandler implements ccai.AIAgenticInter
           Integer b = Integer.valueOf(parts[1].trim());
           String  yStr = parts[2].trim();
           Integer y = yStr.length() <= 2 ? Integer.valueOf('20' + yStr) : Integer.valueOf(yStr);
-          if (a > 12) return Date.newInstance(y, b, a);
-          if (b > 12) return Date.newInstance(y, a, b);
-          return Date.newInstance(y, a, b);
+          if (a > 12) return Date.newInstance(y, b, a);  // dd/MM/yyyy
+          if (b > 12) return Date.newInstance(y, a, b);  // MM/dd/yyyy
+          return Date.newInstance(y, a, b);               // ambiguous — default MM/dd/yyyy
         }
       }
     } catch (Exception e) {}
+    // Final fallback
     try { return Date.valueOf(s); } catch (Exception e) {}
     return null;
   }
