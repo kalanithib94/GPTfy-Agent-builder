@@ -18,6 +18,7 @@ import type { GeneratedBundle } from "./generation-types";
 import { getSalesforceFirstPromptBlock } from "./salesforce-llm-context";
 import { intentDeployPlanSchema } from "./intent-deploy-types";
 import { buildCoverageSampleQueries } from "./sample-queries";
+import { resolveOpenAIModel } from "./openai-server-config";
 import { z } from "zod";
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
@@ -80,7 +81,7 @@ function buildSkillArtifactsOnlySystemPrompt(
   return `You are an expert Salesforce Apex developer for GPTfy-style **agentic handler** classes.
 
 MODE: **SKILL ARTIFACTS ONLY** — The user will **not** deploy a full AI_Agent__c row. They need:
-1) **handlerApex** — global with sharing class ${params.handlerClass} implements ${agenticInterface}; global String executeMethod(String requestParam, Map<String, Object> parameters); switch on requestParam with when branches for each skill; private String err(String) and ok(Map) helpers; private String helper methods per skill. Follow Apex switch on/when (not Java case:).
+1) **handlerApex** — public with sharing class ${params.handlerClass} implements ${agenticInterface}; public String executeMethod(String requestParam, Map<String, Object> parameters); switch on requestParam with when branches for each skill; private String err(String) and ok(Map) helpers; private String helper methods per skill. Follow Apex switch on/when (not Java case:).
 2) **promptCommands** — array of { fileName, content } where fileName is like \`{${params.agentDeveloperName}_YourStem}_PromptCommand.json\` and content is pretty-printed JSON Schema for that skill's parameters. Never use empty "properties": {}.
 
 Also return (placeholders allowed if brief):
@@ -795,14 +796,18 @@ export async function generateWithOpenAI(
     expectedClass: string,
     expectedInterface: string
   ): string | null => {
-    if (!new RegExp(`global\\s+with\\s+sharing\\s+class\\s+${expectedClass}\\b`).test(apex)) {
-      return "missing required global class signature";
+    if (
+      !new RegExp(
+        `(?:global|public)\\s+with\\s+sharing\\s+class\\s+${expectedClass}\\b`
+      ).test(apex)
+    ) {
+      return "missing required public/global with sharing class signature";
     }
     if (!apex.includes(`implements ${expectedInterface}`)) {
       return `missing expected interface ${expectedInterface}`;
     }
-    if (!/global\s+String\s+executeMethod\s*\(/.test(apex)) {
-      return "missing required global executeMethod signature";
+    if (!/(?:global|public)\s+String\s+executeMethod\s*\(/.test(apex)) {
+      return "missing required public/global executeMethod signature";
     }
     if (!/if\s*\(\s*parameters\s*==\s*null\s*\)/.test(apex)) {
       return "executeMethod must guard for null parameters";
@@ -810,9 +815,13 @@ export async function generateWithOpenAI(
     if (!/private\s+String\s+err\s*\(/.test(apex) || !/private\s+String\s+ok\s*\(/.test(apex)) {
       return "missing private err/ok helper methods";
     }
-    // Enforce maintainability: keep skill logic in private helper methods, not giant switch branches.
-    if (!/private\s+String\s+[A-Za-z0-9_]+\s*\(\s*Map<\s*String\s*,\s*Object\s*>\s+[A-Za-z0-9_]+\s*\)/.test(apex)) {
-      return "missing private skill helper methods (Map<String, Object> parameters)";
+    const hasPrivateSkillHelper =
+      /private\s+String\s+[A-Za-z0-9_]+\s*\(\s*Map<\s*String\s*,\s*Object\s*>\s+[A-Za-z0-9_]+\s*\)/.test(
+        apex
+      );
+    const hasSubstantialSwitch = /\bwhen\s+'[^']+'\s*\{[\s\S]{30,}/.test(apex);
+    if (!hasPrivateSkillHelper && !hasSubstantialSwitch) {
+      return "missing private skill helper methods or substantive when { } skill branches";
     }
     if (!/catch\s*\(\s*Exception\b/.test(apex)) {
       return "missing exception handling";
@@ -937,8 +946,8 @@ Action mix rules:
 `}
 
 handlerApex requirements:
-- global with sharing class ${params.handlerClass} implements ${agenticInterface}
-- Method: global String executeMethod(String requestParam, Map<String, Object> parameters)
+- public with sharing class ${params.handlerClass} implements ${agenticInterface} (public preferred; global is acceptable)
+- Method: public String executeMethod(String requestParam, Map<String, Object> parameters)
 - switch on requestParam — each when value MUST match the skill name used in promptCommands file names (stem before _PromptCommand.json per Deploy-GptfyUseCasePipeline.ps1)
 - private helpers **private String err(String)** and **private String ok(Map<String, Object>)** — **never void**; both **return** JSON.serialize(...) strings
 - Do not put markdown (# headings) or prose inside the Apex class. No line breaks inside single-quoted string literals (use \\n or concatenate strings)
@@ -1058,10 +1067,7 @@ switch on requestParam {
       : null,
   });
 
-  const model =
-    options?.modelOverride?.trim() ||
-    process.env.OPENAI_MODEL?.trim() ||
-    "gpt-4.1";
+  const model = resolveOpenAIModel(options?.modelOverride);
   const bodyPayload = JSON.stringify({
     model,
     response_format: { type: "json_object" },
@@ -1172,14 +1178,11 @@ switch on requestParam {
       .map((pc) => promptStemFromFileName(pc.fileName))
       .filter(Boolean);
 
-    const findCoverageErr = validateFindByNameCoveragePostInject({
+    const findCoverageNote = validateFindByNameCoveragePostInject({
       useCase,
       intentResearchInstructions: options?.intentResearchInstructions,
       unstemmedStems: skillNames,
     });
-    if (findCoverageErr) {
-      return { ok: false, error: findCoverageErr };
-    }
 
     const handlerErr = validateHandlerApex(
       repairedHandlerApex,
@@ -1237,7 +1240,10 @@ switch on requestParam {
       specMarkdown:
         (d.specMarkdown ??
           `# ${params.agentName}\n\nAI-generated bundle. Deploy handler then run pipeline.`) +
-        specFindNote,
+        specFindNote +
+        (findCoverageNote ?
+          `\n\n---\n**Note:** ${findCoverageNote}\n`
+        : ""),
       fullConfigStubApex:
         d.fullConfigStubApex ??
         `String targetAgentName = '${params.agentName.replace(/'/g, "\\'")}';\n// TODO: intent rows`,

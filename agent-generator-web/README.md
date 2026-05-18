@@ -9,7 +9,7 @@ Standalone Next.js app: **Salesforce OAuth** → **namespace-aware GPTfy metadat
 - **Field checks** — Key suffixes on `AI_Prompt__c`, `AI_Agent__c`, `AI_Connection__c`, `AI_Agent_Skill__c` aligned with `scripts/Deploy-GptfyUseCasePipeline.ps1`.
 - **Generator** — Use case + pipeline parameters → **full bundle**: Apex class + meta.xml, `*_PromptCommand.json`, `AGENT_SYSTEM_PROMPT.txt`, `AGENT_DESCRIPTION.txt`, `INTENTS_CONFIG.md`, `FullConfig_AnonymousApex.apex` stub, `DEPLOY.md`.
 - **ZIP export** — Repo-style layout under `use-cases/<DeveloperName>/` and `force-app/main/default/classes/`.
-- **OpenAI** — If `OPENAI_API_KEY` is set, generates implementation via `gpt-4.1` by default (override with `OPENAI_MODEL`). Otherwise uses a **template** handler with a `health_Check_Agent` skill you can extend.
+- **OpenAI** — If `OPENAI_API_KEY` is set, generates implementation via **`OPENAI_MODEL`** (default `gpt-4o-mini`). Uses connected-org **field describe hints** to reduce invented `__c` fields. On failure, the API returns **502** with the error (no silent template fallback). Otherwise uses a **template** handler with a `health_Check_Agent` skill you can extend.
 
 ## Salesforce Connected App
 
@@ -59,16 +59,6 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
-
-## E2E scenarios (Puppeteer)
-
-With the dev server running:
-
-```bash
-npm run test:e2e
-```
-
-Optional: `BASE_URL=http://127.0.0.1:3001` if you use another port, and `HEADLESS=false` to watch the browser. Scenarios cover HTTP health, `/api/session`, main routes, and generate form (accordions, tabs). **Generate only (preview)** requires a Salesforce session: if you are not connected, the test asserts the “Connect Salesforce first” error; after OAuth, it asserts the output panel (template or OpenAI bundle).
 
 ## Deploy on Vercel via GitHub
 

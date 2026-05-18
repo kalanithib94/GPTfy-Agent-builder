@@ -22,7 +22,11 @@ import {
 } from "./apex-handler-sanity";
 import { preflightValidateHandlerSoqlCustomFields } from "./apex-soql-field-preflight";
 import { mergeHandlerApexWithOrg } from "./apex-handler-merge";
-import { getOpenAIApiKey, getOpenAIModel } from "./openai-server-config";
+import {
+  getOpenAIApiKey,
+  getOpenAIModel,
+  resolveOpenAIModel,
+} from "./openai-server-config";
 
 const API_VER = "v59.0";
 
@@ -550,7 +554,7 @@ Requirements:
     purpose: args.purpose,
   });
   const payload = JSON.stringify({
-    model: args.model || "gpt-4.1",
+    model: resolveOpenAIModel(args.model),
     temperature: 0.2,
     messages: [
       { role: "system", content: system },

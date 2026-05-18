@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
-import { buildTemplateBundle } from "@/lib/generate-template-bundle";
-import { generateWithOpenAI } from "@/lib/generate-openai";
 import {
   generateRequestSchema,
-  resolveGenerateParams,
 } from "@/lib/generation-types";
-import { defaultIntentDeployPlan } from "@/lib/intent-deploy-types";
-import { getOpenAIApiKey } from "@/lib/openai-server-config";
-import { buildOpenAIOrgContext } from "@/lib/org-sfdc-field-hints";
+import { buildBundleForPipeline } from "@/lib/pipeline-build-bundle";
 import { getSfSession } from "@/lib/session";
 
 export async function POST(request: Request) {
   const session = await getSfSession();
-  if (!session.accessToken) {
+  if (!session.accessToken || !session.instanceUrl) {
     return NextResponse.json(
       { error: "Connect Salesforce first." },
       { status: 401 }
@@ -35,66 +30,26 @@ export async function POST(request: Request) {
   }
 
   const p = parsed.data;
-  const params = resolveGenerateParams(p);
-  const openaiKey = await getOpenAIApiKey();
-  const useTemplate = p.useTemplateOnly === true || !openaiKey;
+  const result = await buildBundleForPipeline(p, {
+    instanceUrl: session.instanceUrl,
+    accessToken: session.accessToken,
+    gptfyNamespace: session.gptfyNamespace,
+  });
 
-  let bundle;
-  let warnings: string[] = [];
-
-  if (!useTemplate) {
-    const openAiOrgContext = await buildOpenAIOrgContext({
-      instanceUrl: session.instanceUrl ?? undefined,
-      accessToken: session.accessToken ?? undefined,
-      gptfyNamespace: session.gptfyNamespace,
-      useCase: p.useCase,
-      notes: p.notes,
-      intentResearchInstructions: p.intentResearchInstructions,
-    });
-    const ai = await generateWithOpenAI(
-      openaiKey!,
-      params,
-      p.useCase,
-      p.notes,
-      openAiOrgContext,
+  if (result.openaiError) {
+    return NextResponse.json(
       {
-        modelOverride: p.openaiModel,
-        intentResearchInstructions: p.intentResearchInstructions,
-        skipIntents: p.skipIntents === true,
-        skillArtifactsOnly: p.skillArtifactsOnly === true,
-      }
-    );
-    if (ai.ok) {
-      bundle = ai.bundle;
-    } else {
-      warnings.push(`OpenAI failed (${ai.error}). Used template bundle instead.`);
-      bundle = buildTemplateBundle(params, p.useCase, p.notes, {
-        gptfyNamespace: session.gptfyNamespace,
-      });
-    }
-  } else {
-    if (!p.useTemplateOnly && !openaiKey) {
-      warnings.push(
-        "No OpenAI API key on the server — using built-in template. Set OPENAI_API_KEY on Vercel or save a key in /admin (Redis)."
-      );
-    }
-    bundle = buildTemplateBundle(params, p.useCase, p.notes, {
-      gptfyNamespace: session.gptfyNamespace,
-    });
-  }
-
-  if (p.skipIntents === true || p.skillArtifactsOnly === true) {
-    bundle.intentDeployPlan = [];
-  } else if (!bundle.intentDeployPlan?.length) {
-    bundle.intentDeployPlan = defaultIntentDeployPlan(
-      bundle.parameters.agentDeveloperName,
-      bundle.parameters.agentName
+        error: "openai_generation_failed",
+        message: result.openaiError,
+        hint: "Fix the use case description, check OPENAI_MODEL, or use Retry fix after a partial deploy. Template fallback is not used when OpenAI was requested.",
+      },
+      { status: 502 }
     );
   }
 
   return NextResponse.json({
-    bundle,
-    warnings,
-    openaiConfigured: Boolean(openaiKey),
+    bundle: result.bundle,
+    warnings: result.warnings,
+    openaiConfigured: result.openaiConfigured,
   });
 }

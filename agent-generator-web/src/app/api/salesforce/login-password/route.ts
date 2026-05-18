@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { resolveSalesforceClientConfig } from "@/lib/sf-client-config";
 import { getSalesforceAuthBase } from "@/lib/sf-endpoints";
 import { parseSalesforceTokenErrorBody } from "@/lib/sf-token-error";
 import { saveTokenResponseToSession, type TokenResponse } from "@/lib/sf-token-session";
@@ -20,12 +19,11 @@ const bodySchema = z.object({
  * Connected App must allow this flow (Setup → Connected App → OAuth policies).
  */
 export async function POST(request: Request) {
-  const cfg = await resolveSalesforceClientConfig();
-  const clientId = cfg.clientId;
-  const clientSecret = cfg.clientSecret;
+  const clientId = process.env.SALESFORCE_CLIENT_ID?.trim();
+  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
     return NextResponse.json(
-      { error: "SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET must be set (env) or saved in /connect." },
+      { error: "SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET must be set on the server." },
       { status: 503 }
     );
   }

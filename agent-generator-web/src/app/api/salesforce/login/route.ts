@@ -1,7 +1,6 @@
 import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { resolveSalesforceClientConfig } from "@/lib/sf-client-config";
 import { getSalesforceAuthBase } from "@/lib/sf-endpoints";
 import { createPkceChallengeS256, createPkceVerifier } from "@/lib/sf-pkce";
 
@@ -13,13 +12,12 @@ function redirectConnectError(request: Request, message: string) {
 }
 
 export async function GET(request: Request) {
-  const cfg = await resolveSalesforceClientConfig();
-  const clientId = cfg.clientId;
-  const redirectUri = cfg.callbackUrl;
+  const clientId = process.env.SALESFORCE_CLIENT_ID?.trim();
+  const redirectUri = process.env.SALESFORCE_CALLBACK_URL?.trim();
   if (!clientId || !redirectUri) {
     return redirectConnectError(
       request,
-      "OAuth is not configured: set SALESFORCE_CLIENT_ID and SALESFORCE_CALLBACK_URL on the server, or save per-org client config in /connect."
+      "OAuth is not configured: set SALESFORCE_CLIENT_ID and SALESFORCE_CALLBACK_URL on the server (Vercel Environment Variables or .env.local), then redeploy."
     );
   }
 
@@ -27,8 +25,8 @@ export async function GET(request: Request) {
   const sandbox = searchParams.get("sandbox") === "1";
   const env = sandbox ? "sandbox" : "production";
   const state = randomBytes(24).toString("hex");
-  /** Default ON: most External Client Apps now require PKCE. */
-  const usePkce = process.env.SALESFORCE_DISABLE_PKCE !== "true";
+  /** Opt-in: set SALESFORCE_USE_PKCE=true when the External Client App requires PKCE. */
+  const usePkce = process.env.SALESFORCE_USE_PKCE === "true";
 
   const jar = cookies();
   jar.set("sf_oauth_state", state, {
@@ -66,7 +64,7 @@ export async function GET(request: Request) {
     redirect_uri: redirectUri,
     state,
     scope: "api refresh_token offline_access openid",
-    prompt: "login consent",
+    prompt: "consent",
   });
   if (codeChallenge) {
     params.set("code_challenge", codeChallenge);

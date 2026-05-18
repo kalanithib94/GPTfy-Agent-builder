@@ -2,17 +2,20 @@ import { buildTemplateBundle } from "@/lib/generate-template-bundle";
 import { generateWithOpenAI } from "@/lib/generate-openai";
 import type { GenerateRequest, GeneratedBundle } from "@/lib/generation-types";
 import { resolveGenerateParams } from "@/lib/generation-types";
-import { getOpenAIApiKey } from "@/lib/openai-server-config";
+import { defaultIntentDeployPlan } from "@/lib/intent-deploy-types";
+import { getOpenAIApiKey, resolveOpenAIModel } from "@/lib/openai-server-config";
 import { buildOpenAIOrgContext } from "@/lib/org-sfdc-field-hints";
 
 export type PipelineBundleResult = {
   bundle: GeneratedBundle;
   warnings: string[];
   openaiConfigured: boolean;
+  /** Set when OpenAI was requested but generation failed (no silent template fallback). */
+  openaiError?: string;
 };
 
 /**
- * Generate bundle from use case (OpenAI or template). Used by /api/pipeline/run (stream + JSON).
+ * Generate bundle from use case (OpenAI or template). Used by /api/generate/full and /api/pipeline/run.
  */
 export async function buildBundleForPipeline(
   p: GenerateRequest,
@@ -34,6 +37,8 @@ export async function buildBundleForPipeline(
     intentResearchInstructions: p.intentResearchInstructions,
   });
 
+  const model = resolveOpenAIModel(p.openaiModel);
+
   if (!useTemplate) {
     const ai = await generateWithOpenAI(
       openaiKey!,
@@ -42,7 +47,7 @@ export async function buildBundleForPipeline(
       p.notes,
       openAiOrgContext,
       {
-        modelOverride: p.openaiModel,
+        modelOverride: model,
         intentResearchInstructions: p.intentResearchInstructions,
         skipIntents: p.skipIntents === true,
         skillArtifactsOnly: p.skillArtifactsOnly === true,
@@ -51,14 +56,20 @@ export async function buildBundleForPipeline(
     if (ai.ok) {
       bundle = ai.bundle;
     } else {
-      warnings.push(`OpenAI failed (${ai.error}). Used template bundle.`);
-      bundle = buildTemplateBundle(params, p.useCase, p.notes, {
-        gptfyNamespace: orgContext.gptfyNamespace,
-      });
+      return {
+        bundle: buildTemplateBundle(params, p.useCase, p.notes, {
+          gptfyNamespace: orgContext.gptfyNamespace,
+        }),
+        warnings: [],
+        openaiConfigured: true,
+        openaiError: ai.error,
+      };
     }
   } else {
     if (!p.useTemplateOnly && !openaiKey) {
-      warnings.push("No OpenAI API key on server — template bundle.");
+      warnings.push(
+        "No OpenAI API key on server — using built-in template. Set OPENAI_API_KEY on Vercel or save a key in /admin (Redis)."
+      );
     }
     bundle = buildTemplateBundle(params, p.useCase, p.notes, {
       gptfyNamespace: orgContext.gptfyNamespace,
@@ -67,6 +78,11 @@ export async function buildBundleForPipeline(
 
   if (p.skipIntents === true || p.skillArtifactsOnly === true) {
     bundle.intentDeployPlan = [];
+  } else if (!bundle.intentDeployPlan?.length && bundle.source === "template") {
+    bundle.intentDeployPlan = defaultIntentDeployPlan(
+      bundle.parameters.agentDeveloperName,
+      bundle.parameters.agentName
+    );
   }
 
   return { bundle, warnings, openaiConfigured: Boolean(openaiKey) };

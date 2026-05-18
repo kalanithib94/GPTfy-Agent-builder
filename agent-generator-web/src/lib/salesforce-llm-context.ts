@@ -11,6 +11,7 @@ SALESFORCE-FIRST PLATFORM RULES (read before writing SOQL, DML, or any object gr
 - **Task:** Uses **WhatId** (polymorphic related record) and/or **WhoId** (Contact/Lead). Subject, ActivityDate, Status, Priority are typical.
 - **EmailMessage:** Relates to Case/Email threads via **ParentId** and related fields per API version — do not assume a generic CaseId field name without checking object.
 - **Queries:** Use **List<SObject>** + **isEmpty()** for "maybe zero rows". Assigning **[SELECT ... LIMIT 1]** to a single SObject throws if no row exists — avoid that pattern.
+- **SOQL filterability is mandatory:** A field can be selectable but not filterable. Before using a field in **WHERE**, ensure it is filterable in describe metadata. Common trap: text-area style fields such as **Description** on several standard objects are often **not filterable**. If you need text search, use **SOSL** or filter on other supported fields.
 - **SOQL ORDER BY:** Use a space before the sort keyword: **ORDER BY SomeField DESC** or **ASC** — never concatenate or typo into invalid tokens. Do **not** use **desc** as an Apex variable name (confusing and error-prone next to **DESC**).
 - **Aggregates:** Some fields do not support **MAX()** / **MIN()** in aggregate queries (e.g. **Task.ActivityDate** often cannot use **MAX(ActivityDate)**). Prefer **ORDER BY ActivityDate DESC LIMIT 1** in a non-aggregate query, or aggregate on **Id** / **Count()** as appropriate.
 - **Apex shape:** **switch on** value **{ when 'x' { } when else { } }** — not Java **switch / case:**.

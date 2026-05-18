@@ -15,11 +15,7 @@ export type DescribeField = {
   name: string;
   type?: string;
   label?: string;
-  nillable?: boolean;
-  createable?: boolean;
-  updateable?: boolean;
-  length?: number;
-  picklistValues?: { value?: string; label?: string; active?: boolean }[];
+  filterable?: boolean;
 };
 
 export type DescribeResult = {

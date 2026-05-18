@@ -14,7 +14,7 @@ export type SfSessionData = {
   gptfyNamespace?: string;
   /** login | test for token refresh */
   sfEnv?: "production" | "sandbox";
-  /** Optional per-session External Client App override (for multi-org setups). */
+  /** Optional Connected App override stored in session (admin UI mode). */
   sfClientId?: string;
   sfClientSecret?: string;
   sfCallbackUrl?: string;

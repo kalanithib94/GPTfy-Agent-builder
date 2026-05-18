@@ -48,8 +48,16 @@ export async function getOpenAIKeyHint(): Promise<string | null> {
   return maskKeyHint(key);
 }
 
+/** Default chat model for handler generation (env → gpt-4o-mini). */
 export function getOpenAIModel(): string {
-  return process.env.OPENAI_MODEL?.trim() || "gpt-4.1";
+  return process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+}
+
+/** Request override wins, then env, then default. */
+export function resolveOpenAIModel(override?: string | null): string {
+  const o = override?.trim();
+  if (o) return o;
+  return getOpenAIModel();
 }
 
 export function isUpstashConfigured(): boolean {

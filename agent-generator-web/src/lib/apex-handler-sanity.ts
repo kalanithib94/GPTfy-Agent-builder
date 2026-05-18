@@ -45,7 +45,7 @@ export function ensureExecuteMethodNullParametersGuard(apex: string): string {
     return apex;
   }
   const re =
-    /(global\s+String\s+executeMethod\s*\(\s*String\s+requestParam\s*,\s*Map<String\s*,\s*Object>\s+parameters\s*\)\s*\{)/;
+    /((?:global|public)\s+String\s+executeMethod\s*\(\s*String\s+requestParam\s*,\s*Map<String\s*,\s*Object>\s+parameters\s*\)\s*\{)/;
   if (!re.test(apex)) return apex;
   return apex.replace(
     re,
@@ -53,8 +53,15 @@ export function ensureExecuteMethodNullParametersGuard(apex: string): string {
   );
 }
 
+/** Prefer public modifiers (matches production handlers in this repo); GPTfy accepts public or global. */
+export function normalizeHandlerClassModifiers(apex: string): string {
+  return apex
+    .replace(/\bglobal\s+with\s+sharing\s+class\b/g, "public with sharing class")
+    .replace(/\bglobal\s+String\s+executeMethod\b/g, "public String executeMethod");
+}
+
 export function repairHandlerApexCommonIssues(apex: string): string {
-  let s = apex;
+  let s = normalizeHandlerClassModifiers(apex);
   // Models sometimes emit void helpers though the contract is JSON String responses.
   s = s.replace(/\bprivate\s+void\s+err\s*\(/g, "private String err(");
   s = s.replace(/\bprivate\s+void\s+ok\s*\(/g, "private String ok(");
